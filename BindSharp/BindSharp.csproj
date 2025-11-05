@@ -16,9 +16,9 @@
         <PackageLicenseExpression>LGPL-3.0-or-later</PackageLicenseExpression>
 
         <!-- Repository Information -->
-        <RepositoryUrl>https://github.com/yourusername/BindSharp</RepositoryUrl>
+        <RepositoryUrl>https://github.com/GDB-11/BindSharp/</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
-        <PackageProjectUrl>https://github.com/yourusername/BindSharp</PackageProjectUrl>
+        <PackageProjectUrl>https://github.com/GDB-11/BindSharp/</PackageProjectUrl>
 
         <!-- Documentation -->
         <GenerateDocumentationFile>true</GenerateDocumentationFile>
