@@ -8,11 +8,11 @@
     <licenseUrl>https://licenses.nuget.org/LGPL-3.0-or-later</licenseUrl>
     <icon>icon.png</icon>
     <readme>README.md</readme>
-    <projectUrl>https://github.com/yourusername/BindSharp</projectUrl>
+    <projectUrl>https://github.com/GDB-11/BindSharp/</projectUrl>
     <description>A lightweight functional programming library for .NET that provides Railway-Oriented Programming patterns with Result types. Includes comprehensive async support for composing operations that can succeed or fail.</description>
     <releaseNotes>Initial release with Result type and functional extensions for sync and async operations.</releaseNotes>
     <tags>functional railway-oriented-programming result error-handling async monads</tags>
-    <repository type="git" url="https://github.com/yourusername/BindSharp" />
+    <repository type="git" url="https://github.com/GDB-11/BindSharp/" commit="e487d52944a1e83b228ec3f92214bfa54e91b2d8" />
     <dependencies>
       <group targetFramework=".NETStandard2.0" />
     </dependencies>

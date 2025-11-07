@@ -5,7 +5,7 @@
   },
   "projects": {
     "/home/Gianfranco/repos/bindsharp/BindSharp/BindSharp.csproj": {
-      "version": "1.0.0",
+      "version": "1.1.0",
       "restore": {
         "projectUniqueName": "/home/Gianfranco/repos/bindsharp/BindSharp/BindSharp.csproj",
         "projectName": "BindSharp",
@@ -62,7 +62,7 @@
           ],
           "assetTargetFallback": true,
           "warn": true,
-          "runtimeIdentifierGraphPath": "/run/host/usr/share/dotnet/sdk/9.0.110/RuntimeIdentifierGraph.json"
+          "runtimeIdentifierGraphPath": "/var/run/host/usr/share/dotnet/sdk/9.0.110/RuntimeIdentifierGraph.json"
         }
       }
     }

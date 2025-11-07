@@ -10,3 +10,4 @@
 /home/Gianfranco/repos/bindsharp/BindSharp/obj/Release/netstandard2.0/BindSharp.dll
 /home/Gianfranco/repos/bindsharp/BindSharp/obj/Release/netstandard2.0/BindSharp.xml
 /home/Gianfranco/repos/bindsharp/BindSharp/obj/Release/netstandard2.0/BindSharp.pdb
+/home/Gianfranco/repos/bindsharp/BindSharp/obj/Release/netstandard2.0/BindSharp.sourcelink.json
