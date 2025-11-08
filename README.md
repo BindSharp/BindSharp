@@ -30,21 +30,22 @@ return await FetchDataAsync()
     );
 ```
 
-## ✨ What's New in 1.1.0
+## ✨ What's New in 1.2.0
 
-**ResultExtensions** adds powerful utilities for real-world scenarios:
+**Unit Type** - Functional representation of "no value":
 
-- 🛡️ **Exception Handling** - Convert try/catch into Results with `Try` and `TryAsync`
-- ✅ **Validation** - Add business rule checks with `Ensure` and `EnsureNotNull`
-- 📝 **Side Effects** - Execute logging/metrics with `Tap` without breaking pipelines
-- 🔒 **Resource Management** - Safe disposal with `Using` (the bracket pattern)
-- 🔄 **Nullable Conversion** - Convert `null` checks into Results with `ToResult`
+- 🎯 **Unit.Value** - Use when operations succeed but produce no meaningful return value
+- ⚡ **Zero overhead** - Empty struct with no memory footprint
+- 🔗 **Better composition** - Enables consistent `Result<T, TError>` signatures throughout your codebase
 
-See the [ResultExtensions](#resultextensions---utilities-for-the-real-world) section below for examples!
+See the [Unit Type](#unit-type---representing-no-value) section below for examples!
+
+**Previous: Version 1.1.0** added ResultExtensions with exception handling, validation, side effects, resource management, and nullable conversion. [See full details](#resultextensions---utilities-for-the-real-world).
 
 ## Features
 
 ✅ **Result<T, TError>** - Explicit success/failure handling  
+✅ **Unit Type** - Represent "no value" in functional pipelines  
 ✅ **Railway-Oriented Programming** - Chain operations that can fail  
 ✅ **Full Async/Await Support** - Game-changing async composition  
 ✅ **Exception Handling** - Convert try/catch into functional Results  
@@ -79,6 +80,109 @@ if (success.IsSuccess)
 if (failure.IsFailure)
     Console.WriteLine(failure.Error); // "Something went wrong"
 ```
+
+## Unit Type - Representing "No Value"
+
+Many operations succeed but don't produce a meaningful value. The `Unit` type lets you maintain consistent `Result<T, TError>` signatures in these cases:
+
+### The Problem
+```csharp
+// ❌ Without Unit: inconsistent return types
+public async Task DeleteUserAsync(int id);      // void? Task? bool?
+public bool UpdateSettings(Settings s);         // What does 'true' mean?
+public int InsertRecord(Record r);              // Returning affected rows... but do we care?
+
+// These can't be composed in Result chains
+```
+
+### The Solution
+```csharp
+// ✅ With Unit: consistent Result<Unit, TError> signatures everywhere
+public Task<Result<Unit, string>> DeleteUserAsync(int id) =>
+    ResultExtensions.TryAsync(
+        operation: async () => {
+            await _repository.DeleteAsync(id);
+            return Unit.Value;  // T = Unit (success, no value)
+        },
+        errorFactory: ex => $"Delete failed: {ex.Message}"  // TError = string
+    );
+    // Returns: Task<Result<Unit, string>>
+
+public Result<Unit, ValidationError> UpdateSettings(Settings settings) =>
+    ValidateSettings(settings)  // Result<Settings, ValidationError>
+        .Bind(s => ApplySettings(s))  // Result<Unit, ValidationError>
+        .Map(_ => Unit.Value);  // Result<Unit, ValidationError>
+```
+
+### Real-World Example: CRUD Operations Chain
+```csharp
+// Every operation returns Result<Unit, string> for perfect composition
+public async Task<Result<Unit, string>> CreateUserWorkflowAsync(CreateUserRequest request)
+{
+    return await ValidateRequest(request)                    // Result<CreateUserRequest, string>
+        .BindAsync(r => InsertUserAsync(r))                  // Result<Unit, string>
+        .TapAsync(_ => SendWelcomeEmailAsync(r.Email))       // Result<Unit, string> (unchanged)
+        .BindAsync(_ => InitializePreferencesAsync(r.UserId)) // Result<Unit, string>
+        .TapAsync(_ => _logger.LogInfo("User workflow completed"));
+    
+    // Clean chain - consistent Result<Unit, string> throughout
+}
+
+private async Task<Result<Unit, string>> InsertUserAsync(CreateUserRequest request) =>
+    await ResultExtensions.TryAsync(
+        operation: async () => {
+            await _database.ExecuteAsync("INSERT INTO Users ...", request);
+            return Unit.Value;  // T = Unit
+        },
+        errorFactory: ex => $"Database error: {ex.Message}"  // TError = string
+    );
+    // Returns: Task<Result<Unit, string>>
+
+private async Task<Result<Unit, string>> InitializePreferencesAsync(int userId) =>
+    await ResultExtensions.TryAsync(
+        operation: async () => {
+            await _database.ExecuteAsync("INSERT INTO Preferences ...", userId);
+            return Unit.Value;  // T = Unit
+        },
+        errorFactory: ex => $"Failed to initialize preferences: {ex.Message}"  // TError = string
+    );
+    // Returns: Task<Result<Unit, string>>
+```
+
+### More Examples with Different Error Types
+```csharp
+// With custom error types
+public record OrderError(string Code, string Message);
+
+public async Task<Result<Unit, OrderError>> CancelOrderAsync(int orderId) =>
+    await GetOrderAsync(orderId)                         // Result<Order, OrderError>
+        .BindAsync(order => ValidateCancellation(order)) // Result<Order, OrderError>
+        .BindAsync(order => DeleteOrderAsync(order))     // Result<Unit, OrderError>
+        .TapAsync(_ => NotifyCustomerAsync(orderId));    // Result<Unit, OrderError>
+
+// With exception types  
+public Result<Unit, Exception> SaveConfigAsync(Config config) =>
+    ResultExtensions.Try(
+        operation: () => {
+            File.WriteAllText("config.json", JsonSerializer.Serialize(config));
+            return Unit.Value;  // T = Unit
+        },
+        errorFactory: ex => ex  // TError = Exception
+    );
+    // Returns: Result<Unit, Exception>
+```
+
+### When to Use Unit
+
+✅ **Database operations** - Inserts, updates, deletes that return void or row counts you don't need  
+✅ **Notifications** - Sending emails, SMS, push notifications  
+✅ **Validation** - Checks that produce no output, only pass/fail  
+✅ **Side effects** - Logging, caching, metrics wrapped in Results  
+✅ **Void replacements** - Any operation where success matters, not the return value
+
+### Performance
+
+`Unit.Value` is a singleton with zero memory footprint. There's no performance cost to using it - perfect for high-throughput functional pipelines!
 
 ## Core Operations
 
@@ -602,6 +706,21 @@ public async Task<Result<Data, string>> GetDataWithFallbackAsync(int id)
 }
 ```
 
+### Unit for Operation Chains
+```csharp
+public async Task<Result<Unit, OrderError>> ProcessOrderAsync(Order order)
+{
+    return await ValidateOrder(order)
+        .BindAsync(async o => await SaveOrderAsync(o))           // Result<Unit, OrderError>
+        .BindAsync(async _ => await UpdateInventoryAsync(order))  // Result<Unit, OrderError>
+        .BindAsync(async _ => await NotifyWarehouseAsync(order))  // Result<Unit, OrderError>
+        .TapAsync(async _ => await _logger.LogSuccessAsync(order.Id));
+    
+    // Clean chain of operations that succeed/fail but produce no values
+    // Each step returns Result<Unit, OrderError> for consistency
+}
+```
+
 ### Parallel Async Operations
 ```csharp
 public async Task<Result<CombinedData, string>> FetchAllDataAsync(int userId)
@@ -763,6 +882,7 @@ return await GetUserAsync(id)
 
 ### Core Types
 - `Result<T, TError>` - Result type with Success/Failure states
+- `Unit` - Represents "no value" (use `Unit.Value`)
 
 ### FunctionalResult (Core Operations)
 - `Map<T1, T2, TError>` - Transform success value
@@ -787,7 +907,7 @@ return await GetUserAsync(id)
 
 ## Acknowledgments
 
-Special thanks to **[Zoran Horvat](https://www.youtube.com/@zoran-horvat)** from the YouTube channel **"Zoran on C#"** for his excellent tutorials on functional programming in C#. His teaching on Railway-Oriented Programming and Result patterns made this library possible. 
+Special thanks to **[Zoran Horvat](https://www.youtube.com/@zoran-horvat)** from the YouTube channel **"Zoran on C#"** for his excellent tutorials on functional programming in C#. His teaching on Railway-Oriented Programming and Result patterns made this library possible.
 
 If you want to learn advanced C# techniques and functional programming concepts, check out his channel - he deserves way more views! We can all learn a thing or two from him. 🙏
 
