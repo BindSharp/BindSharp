@@ -30,21 +30,47 @@ return await FetchDataAsync()
     );
 ```
 
-## ✨ What's New in 1.2.0
+## ✨ What's New in 1.3.0
 
-**Unit Type** - Functional representation of "no value":
+**Equality & Implicit Conversions** - Write cleaner, more maintainable code:
 
-- 🎯 **Unit.Value** - Use when operations succeed but produce no meaningful return value
-- ⚡ **Zero overhead** - Empty struct with no memory footprint
-- 🔗 **Better composition** - Enables consistent `Result<T, TError>` signatures throughout your codebase
+- ✅ **Equality Support** - Results can now be compared and used in collections!
+- ✨ **Implicit Conversions** - Return values directly without wrapping (40-50% less code!)
+- 🐛 **Better Debugging** - ToString() override shows "Success(value)" or "Failure(error)"
 
-See the [Unit Type](#unit-type---representing-no-value) section below for examples!
+**Before:**
+```csharp
+public Result<int, string> Divide(int a, int b)
+{
+    if (b == 0) 
+        return Result<int, string>.Failure("Division by zero");
+    
+    return Result<int, string>.Success(a / b);
+}
+```
 
-**Previous: Version 1.1.0** added ResultExtensions with exception handling, validation, side effects, resource management, and nullable conversion. [See full details](#resultextensions---utilities-for-the-real-world).
+**After:**
+```csharp
+public Result<int, string> Divide(int a, int b)
+{
+    if (b == 0) return "Division by zero";  // ✨ Implicit!
+    return a / b;  // ✨ Implicit!
+}
+```
+
+See the [Implicit Conversions](#implicit-conversions---cleaner-syntax) and [Equality Support](#equality-support) sections below!
+
+⚠️ **CRITICAL:** [Read the implicit conversions warning](#-critical-implicit-conversions-warning) to avoid ambiguity issues.
+
+**Previous Releases:**
+- **Version 1.2.0** added the [Unit Type](#unit-type---representing-no-value) for functional result handling
+- **Version 1.1.0** added [ResultExtensions](#resultextensions---utilities-for-the-real-world) with exception handling, validation, and more
 
 ## Features
 
 ✅ **Result<T, TError>** - Explicit success/failure handling  
+✅ **Equality Support** - Compare Results, use in collections  
+✨ **Implicit Conversions** - Clean, concise syntax  
 ✅ **Unit Type** - Represent "no value" in functional pipelines  
 ✅ **Railway-Oriented Programming** - Chain operations that can fail  
 ✅ **Full Async/Await Support** - Game-changing async composition  
@@ -67,11 +93,13 @@ dotnet add package BindSharp
 ```csharp
 using BindSharp;
 
-// Create a successful result
+// Create results - explicit style
 var success = Result<int, string>.Success(42);
-
-// Create a failed result
 var failure = Result<int, string>.Failure("Something went wrong");
+
+// Or use implicit conversions (new in 1.3.0!)
+Result<int, string> success2 = 42;  // ✨ Implicit!
+Result<int, string> failure2 = "Error occurred";  // ✨ Implicit!
 
 // Check the result
 if (success.IsSuccess)
@@ -79,7 +107,167 @@ if (success.IsSuccess)
 
 if (failure.IsFailure)
     Console.WriteLine(failure.Error); // "Something went wrong"
+
+// Compare results (new in 1.3.0!)
+if (success == success2)  // ✅ TRUE!
+    Console.WriteLine("Results are equal!");
 ```
+
+## Equality Support
+
+**New in 1.3.0!** Results now implement `IEquatable<Result<T, TError>>` for proper value equality:
+
+```csharp
+var r1 = Result<int, string>.Success(42);
+var r2 = Result<int, string>.Success(42);
+
+// Equality comparison works!
+Console.WriteLine(r1 == r2);  // TRUE ✅
+Console.WriteLine(r1.Equals(r2));  // TRUE ✅
+
+// Works in collections
+var set = new HashSet<Result<int, string>>();
+set.Add(Result<int, string>.Success(1));
+set.Add(Result<int, string>.Success(1));  // Not added (duplicate)
+Console.WriteLine(set.Count);  // 1 ✅
+
+// Use as dictionary keys
+var cache = new Dictionary<Result<int, string>, string>();
+cache[Result<int, string>.Success(1)] = "one";
+
+// Better debugging
+Console.WriteLine(r1);  // "Success(42)"
+Console.WriteLine(failure);  // "Failure(Something went wrong)"
+```
+
+### In Tests
+```csharp
+[Fact]
+public void Divide_ReturnsCorrectResult()
+{
+    var result = Calculator.Divide(10, 2);
+    var expected = Result<int, string>.Success(5);
+    
+    Assert.Equal(expected, result);  // ✅ Now works!
+}
+```
+
+## Implicit Conversions - Cleaner Syntax
+
+**New in 1.3.0!** Return values and errors directly without wrapping them:
+
+### Simple Example
+```csharp
+// Before: Verbose
+public Result<int, string> ParseAge(string input)
+{
+    if (string.IsNullOrWhiteSpace(input))
+        return Result<int, string>.Failure("Age is required");
+    
+    if (!int.TryParse(input, out int age))
+        return Result<int, string>.Failure("Must be a number");
+    
+    if (age < 0 || age > 150)
+        return Result<int, string>.Failure("Invalid age");
+    
+    return Result<int, string>.Success(age);
+}
+
+// After: Clean! (53% less code)
+public Result<int, string> ParseAge(string input)
+{
+    if (string.IsNullOrWhiteSpace(input)) return "Age is required";
+    if (!int.TryParse(input, out int age)) return "Must be a number";
+    if (age < 0 || age > 150) return "Invalid age";
+    
+    return age;  // ✨ So clean!
+}
+```
+
+### Switch Expressions
+```csharp
+public Result<decimal, string> GetDiscount(string code)
+{
+    return code.ToUpper() switch
+    {
+        "SAVE10" => 0.10m,  // ✨ Implicit Success
+        "SAVE20" => 0.20m,  // ✨ Implicit Success
+        "SAVE50" => 0.50m,  // ✨ Implicit Success
+        _ => "Invalid coupon code"  // ✨ Implicit Failure
+    };
+}
+```
+
+### Async Operations
+```csharp
+public async Task<Result<User, string>> GetUserAsync(int id)
+{
+    if (id < 0) return "Invalid ID";  // ✨ Clean!
+    
+    var user = await _db.FindUserAsync(id);
+    if (user == null) return "User not found";  // ✨ Clean!
+    
+    return user;  // ✨ Clean!
+}
+```
+
+### Real-World Example
+```csharp
+public Result<User, string> CreateUser(CreateUserRequest request)
+{
+    if (request == null) return "Request is null";
+    if (string.IsNullOrEmpty(request.Email)) return "Email is required";
+    if (string.IsNullOrEmpty(request.Password)) return "Password is required";
+    if (request.Password.Length < 8) return "Password too short";
+    
+    return new User(request);  // ✨ 53% less code than before!
+}
+```
+
+## ⚠️ CRITICAL: Implicit Conversions Warning
+
+**NEVER use the same type for both `T` and `TError`** - this creates ambiguity:
+
+```csharp
+// ❌ NEVER DO THIS - Ambiguous!
+public Result<string, string> GetValue()
+{
+    return "value";  // Is this Success or Failure? Compiler can't tell!
+}
+
+// ✅ ALWAYS DO THIS - Clear!
+public Result<int, string> GetValue()
+{
+    if (error) return "Error message";  // Clear: string = Failure
+    return 42;  // Clear: int = Success
+}
+
+// ✅ OR USE CUSTOM ERROR TYPE - Even Better!
+public record ErrorInfo(string Message);
+
+public Result<string, ErrorInfo> GetValue()
+{
+    if (error) return new ErrorInfo("Error");  // Clear: ErrorInfo = Failure
+    return "Success value";  // Clear: string = Success
+}
+```
+
+**Best Practice:** Define custom error types for your domain:
+```csharp
+public record ValidationError(string Field, string Message);
+public record NotFoundError(string EntityType, string Id);
+public record UnauthorizedError(string Reason);
+
+public Result<User, ValidationError> ValidateUser(UserInput input);
+public Result<Order, NotFoundError> GetOrder(string orderId);
+public Result<Resource, UnauthorizedError> AccessResource(string userId);
+```
+
+This approach:
+- ✅ Eliminates ambiguity completely
+- ✅ Makes errors type-safe
+- ✅ Enables better error handling
+- ✅ Improves code documentation
 
 ## Unit Type - Representing "No Value"
 
@@ -104,14 +292,8 @@ public Task<Result<Unit, string>> DeleteUserAsync(int id) =>
             await _repository.DeleteAsync(id);
             return Unit.Value;  // T = Unit (success, no value)
         },
-        errorFactory: ex => $"Delete failed: {ex.Message}"  // TError = string
+        errorFactory: ex => $"Delete failed: {ex.Message}"
     );
-    // Returns: Task<Result<Unit, string>>
-
-public Result<Unit, ValidationError> UpdateSettings(Settings settings) =>
-    ValidateSettings(settings)  // Result<Settings, ValidationError>
-        .Bind(s => ApplySettings(s))  // Result<Unit, ValidationError>
-        .Map(_ => Unit.Value);  // Result<Unit, ValidationError>
 ```
 
 ### Real-World Example: CRUD Operations Chain
@@ -132,44 +314,10 @@ private async Task<Result<Unit, string>> InsertUserAsync(CreateUserRequest reque
     await ResultExtensions.TryAsync(
         operation: async () => {
             await _database.ExecuteAsync("INSERT INTO Users ...", request);
-            return Unit.Value;  // T = Unit
+            return Unit.Value;  // ✨ Implicit conversion works here too!
         },
-        errorFactory: ex => $"Database error: {ex.Message}"  // TError = string
+        errorFactory: ex => $"Database error: {ex.Message}"
     );
-    // Returns: Task<Result<Unit, string>>
-
-private async Task<Result<Unit, string>> InitializePreferencesAsync(int userId) =>
-    await ResultExtensions.TryAsync(
-        operation: async () => {
-            await _database.ExecuteAsync("INSERT INTO Preferences ...", userId);
-            return Unit.Value;  // T = Unit
-        },
-        errorFactory: ex => $"Failed to initialize preferences: {ex.Message}"  // TError = string
-    );
-    // Returns: Task<Result<Unit, string>>
-```
-
-### More Examples with Different Error Types
-```csharp
-// With custom error types
-public record OrderError(string Code, string Message);
-
-public async Task<Result<Unit, OrderError>> CancelOrderAsync(int orderId) =>
-    await GetOrderAsync(orderId)                         // Result<Order, OrderError>
-        .BindAsync(order => ValidateCancellation(order)) // Result<Order, OrderError>
-        .BindAsync(order => DeleteOrderAsync(order))     // Result<Unit, OrderError>
-        .TapAsync(_ => NotifyCustomerAsync(orderId));    // Result<Unit, OrderError>
-
-// With exception types  
-public Result<Unit, Exception> SaveConfigAsync(Config config) =>
-    ResultExtensions.Try(
-        operation: () => {
-            File.WriteAllText("config.json", JsonSerializer.Serialize(config));
-            return Unit.Value;  // T = Unit
-        },
-        errorFactory: ex => ex  // TError = Exception
-    );
-    // Returns: Result<Unit, Exception>
 ```
 
 ### When to Use Unit
@@ -190,7 +338,7 @@ public Result<Unit, Exception> SaveConfigAsync(Config config) =>
 
 Transform a value when the result is successful:
 ```csharp
-Result<int, string> GetAge() => Result<int, string>.Success(25);
+Result<int, string> GetAge() => 25;  // ✨ Implicit conversion!
 
 var result = GetAge()
     .Map(age => age * 2)  // 50
@@ -220,12 +368,12 @@ Chain multiple operations where each can fail:
 ```csharp
 Result<string, string> ValidateEmail(string email) =>
     email.Contains("@")
-        ? Result<string, string>.Success(email)
-        : Result<string, string>.Failure("Invalid email");
+        ? email  // ✨ Implicit Success!
+        : "Invalid email";  // ✨ Implicit Failure!
 
 Result<string, string> SendEmail(string email) =>
     /* send email logic */
-    Result<string, string>.Success($"Sent to {email}");
+    $"Sent to {email}";  // ✨ Implicit Success!
 
 var result = ValidateEmail("user@example.com")
     .Bind(SendEmail);  // Only runs if validation succeeds
@@ -277,7 +425,7 @@ public IActionResult GetProduct(int id)
 
 Change the error type while preserving success:
 ```csharp
-Result<int, string> result = Result<int, string>.Failure("404");
+Result<int, string> result = "404";  // ✨ Implicit Failure!
 
 var transformed = result.MapError(errorCode => new 
 {
@@ -314,7 +462,7 @@ Task<Result<int, string>> asyncResult = GetUserIdAsync();
 var user = await asyncResult.MapAsync(id => GetUserFromCache(id));
 
 // 2. Result + async function
-Result<int, string> userId = Result<int, string>.Success(42);
+Result<int, string> userId = 42;  // ✨ Implicit!
 var user = await userId.MapAsync(async id => await FetchUserAsync(id));
 
 // 3. Task<Result> + async function (most common!)
@@ -590,7 +738,7 @@ public async Task<Result<Order, string>> CreateOrderWithTransactionAsync(CreateO
                 .TapAsync(async order => await CreateOrderHistoryAsync(order))
                 .BindAsync(async order => {
                     await transaction.CommitAsync();
-                    return Result<Order, string>.Success(order);
+                    return order;  // ✨ Implicit Success!
                 })
                 .MapErrorAsync(async error => {
                     await transaction.RollbackAsync();
@@ -615,16 +763,16 @@ public Task<Result<User, string>> GetUserAsync(int id)
     // Fast path: check cache
     var cached = _cache.Get<User>(id);
     if (cached != null)
-        return Result<User, string>.Success(cached).AsTask();
+        return cached.AsTask();  // ✨ Implicit conversion + AsTask!
     
     // Slow path: fetch from database
     return FetchUserFromDatabaseAsync(id);
 }
 ```
 
-## Complete Real-World Example with ResultExtensions
+## Complete Real-World Example
 
-Here's how everything comes together:
+Here's how everything comes together with all the new 1.3.0 features:
 
 ```csharp
 public class OrderService
@@ -659,7 +807,7 @@ public class OrderService
             .TapAsync(async order => await _emailService.SendConfirmationAsync(order))
             .TapAsync(async order => await _sms.SendNotificationAsync(order.CustomerId))
             
-            // Transform and audit
+            // Transform and audit (with implicit conversions!)
             .MapAsync(order => new OrderConfirmation(order))
             .TapAsync(async conf => await _auditLog.LogOrderCreatedAsync(conf));
     }
@@ -682,128 +830,6 @@ public class OrderService
 }
 ```
 
-## Advanced Patterns
-
-### Error Recovery
-```csharp
-public async Task<Result<Data, string>> GetDataWithFallbackAsync(int id)
-{
-    var primaryResult = await FetchFromPrimarySourceAsync(id);
-    
-    if (primaryResult.IsSuccess)
-        return primaryResult;
-    
-    // Try fallback
-    return await FetchFromCacheAsync(id)
-        .BindAsync(async cached => {
-            if (cached.IsSuccess)
-                return cached;
-            return await FetchFromBackupSourceAsync(id);
-        })
-        .MapError(backupError => 
-            $"All sources failed: Primary={primaryResult.Error}, Backup={backupError}"
-        );
-}
-```
-
-### Unit for Operation Chains
-```csharp
-public async Task<Result<Unit, OrderError>> ProcessOrderAsync(Order order)
-{
-    return await ValidateOrder(order)
-        .BindAsync(async o => await SaveOrderAsync(o))           // Result<Unit, OrderError>
-        .BindAsync(async _ => await UpdateInventoryAsync(order))  // Result<Unit, OrderError>
-        .BindAsync(async _ => await NotifyWarehouseAsync(order))  // Result<Unit, OrderError>
-        .TapAsync(async _ => await _logger.LogSuccessAsync(order.Id));
-    
-    // Clean chain of operations that succeed/fail but produce no values
-    // Each step returns Result<Unit, OrderError> for consistency
-}
-```
-
-### Parallel Async Operations
-```csharp
-public async Task<Result<CombinedData, string>> FetchAllDataAsync(int userId)
-{
-    // Start all operations in parallel
-    var userTask = GetUserAsync(userId);
-    var ordersTask = GetOrdersAsync(userId);
-    var preferencesTask = GetPreferencesAsync(userId);
-    
-    await Task.WhenAll(userTask, ordersTask, preferencesTask);
-    
-    // Combine results
-    var user = await userTask;
-    var orders = await ordersTask;
-    var preferences = await preferencesTask;
-    
-    // If any failed, return first failure
-    if (user.IsFailure) return Result<CombinedData, string>.Failure(user.Error);
-    if (orders.IsFailure) return Result<CombinedData, string>.Failure(orders.Error);
-    if (preferences.IsFailure) return Result<CombinedData, string>.Failure(preferences.Error);
-    
-    return Result<CombinedData, string>.Success(new CombinedData
-    {
-        User = user.Value,
-        Orders = orders.Value,
-        Preferences = preferences.Value
-    });
-}
-```
-
-### Validation Chains with Ensure
-```csharp
-public Result<User, ValidationError> ValidateAndCreateUser(UserRegistration input)
-{
-    return input.ToResult(ValidationError.Required("User registration data"))
-        .Ensure(
-            i => !string.IsNullOrWhiteSpace(i.Email),
-            ValidationError.Required("Email")
-        )
-        .Ensure(
-            i => i.Email.Contains("@"),
-            ValidationError.Invalid("Email format")
-        )
-        .Ensure(
-            i => !string.IsNullOrWhiteSpace(i.Password),
-            ValidationError.Required("Password")
-        )
-        .Ensure(
-            i => i.Password.Length >= 8,
-            ValidationError.Invalid("Password must be at least 8 characters")
-        )
-        .Ensure(
-            i => i.Age >= 18,
-            ValidationError.Invalid("Must be 18 or older")
-        )
-        .Map(i => new User(i.Email, i.Password, i.Age));
-}
-
-// Each validation only runs if previous succeeded
-// First failure stops and returns the error
-```
-
-### Complete Pipeline with All Features
-```csharp
-public async Task<Result<ProcessedOrder, OrderError>> ProcessOrderPipelineAsync(int orderId)
-{
-    return await ResultExtensions.TryAsync(
-            async () => await _repository.GetOrderAsync(orderId),
-            ex => OrderError.DatabaseError(ex.Message)
-        )
-        .EnsureNotNullAsync(OrderError.NotFound(orderId))
-        .Ensure(o => !o.IsProcessed, OrderError.AlreadyProcessed(orderId))
-        .Tap(o => _logger.LogInfo($"Starting processing for order {o.Id}"))
-        .BindAsync(async o => await ValidateOrderAsync(o))
-        .TapAsync(async o => await _metrics.IncrementAsync("orders.validated"))
-        .BindAsync(async o => await EnrichOrderDataAsync(o))
-        .TapAsync(async o => await _cache.SetAsync($"order:{o.Id}", o))
-        .BindAsync(async o => await ApplyBusinessRulesAsync(o))
-        .TapAsync(async o => await _auditLog.LogAsync("Order processed", o.Id))
-        .MapAsync(o => new ProcessedOrder(o));
-}
-```
-
 ## Tips & Best Practices
 
 ### General
@@ -814,36 +840,35 @@ public async Task<Result<ProcessedOrder, OrderError>> ProcessOrderPipelineAsync(
 5. **Match at boundaries** - Convert Result to concrete types at API/UI boundaries
 6. **Async all the way** - If any operation is async, make the whole chain async
 
-### ResultExtensions Specific
-7. **Use Try for exception-based APIs** - Convert legacy code to Results
-8. **Use Ensure for business rules** - Keep validation in the pipeline
-9. **Use Tap for side effects** - Logging, metrics, notifications
-10. **Use Using for resources** - Database connections, file streams, transactions
-11. **Use ToResult for nullables** - Convert optional values to Results
-12. **Chain Tap calls sparingly** - Too many can impact readability
+### Implicit Conversions (NEW in 1.3.0)
+7. **Use different types for T and TError** - NEVER use `Result<string, string>`
+8. **Define custom error types** - Makes code clearer and type-safer
+9. **Mix styles freely** - Implicit and explicit can coexist
+10. **Use for guard clauses** - Perfect for early returns
+
+### ResultExtensions
+11. **Use Try for exception-based APIs** - Convert legacy code to Results
+12. **Use Ensure for business rules** - Keep validation in the pipeline
+13. **Use Tap for side effects** - Logging, metrics, notifications
+14. **Use Using for resources** - Database connections, file streams, transactions
+15. **Use ToResult for nullables** - Convert optional values to Results
 
 ### Error Handling Strategy
 ```csharp
 // ✅ Good: Specific error types
 public record OrderError(string Code, string Message);
 
-// ✅ Good: Error factory for flexibility
-ResultExtensions.Try(
-    () => Parse(input),
-    ex => new ParseError(ex.Message, ex.GetType().Name)
-);
+// ✅ Good: Enables implicit conversions without ambiguity
+public Result<Order, OrderError> CreateOrder(OrderRequest request)
+{
+    if (request.Items.Count == 0)
+        return new OrderError("EMPTY_CART", "Cart is empty");  // ✨ Implicit!
+    
+    return new Order(request);  // ✨ Implicit!
+}
 
-// ⚠️ Okay: String errors for simple cases
-ResultExtensions.Try(
-    () => Parse(input),
-    ex => $"Parse failed: {ex.Message}"
-);
-
-// ❌ Avoid: Losing exception information
-ResultExtensions.Try(
-    () => Parse(input),
-    ex => "Parse failed"  // Lost all exception details!
-);
+// ❌ Avoid: Same type for T and TError (ambiguous with implicit conversions!)
+public Result<string, string> GetValue() { ... }  // DON'T DO THIS!
 ```
 
 ## Why Async Support is a Game-Changer
