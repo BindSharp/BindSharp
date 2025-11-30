@@ -110,4 +110,52 @@ public static class FunctionalResult
     public static TResult Match<T, TError, TResult>
         (this Result<T, TError> result, Func<T, TResult> mapValue, Func<TError, TResult> mapError) =>
         result.IsSuccess ? mapValue(result.Value) : mapError(result.Error);
+    
+    /// <summary>
+    /// Conditionally continues processing or returns early based on a predicate.
+    /// If the predicate returns true, the current value is returned unchanged (short-circuit).
+    /// If the predicate returns false, the continuation function is applied.
+    /// This enables conditional branching in functional pipelines without breaking the chain.
+    /// </summary>
+    /// <typeparam name="T">The type of the success value.</typeparam>
+    /// <typeparam name="TError">The type of the error value.</typeparam>
+    /// <param name="result">The result to evaluate.</param>
+    /// <param name="predicate">The condition to check against the success value.</param>
+    /// <param name="continuation">The function to apply if the predicate returns false.</param>
+    /// <returns>
+    /// The original result unchanged if the predicate returns true,
+    /// the result of the continuation function if the predicate returns false,
+    /// or the original error if the result was already failed.
+    /// </returns>
+    /// <example>
+    /// <code>
+    /// // Extract JSON that might be prefixed with "request:id:"
+    /// var result = GetPayload()
+    ///     .Map(p => p.TrimStart())
+    ///     .BindIf(
+    ///         // If already JSON, return as-is
+    ///         p => p.StartsWith("{") || p.StartsWith("["),
+    ///         // Otherwise, extract JSON from prefixed format
+    ///         p => ExtractJsonAfterPrefix(p)
+    ///     );
+    /// 
+    /// // Validation with optional enrichment
+    /// var validated = GetUser()
+    ///     .BindIf(
+    ///         user => user.IsComplete,
+    ///         user => EnrichFromDatabase(user)  // Only enrich incomplete users
+    ///     );
+    /// </code>
+    /// </example>
+    public static Result<T, TError> BindIf<T, TError>(
+        this Result<T, TError> result,
+        Func<T, bool> predicate,
+        Func<T, Result<T, TError>> continuation)
+    {
+        if (result.IsFailure) return result;
+    
+        return predicate(result.Value) 
+            ? result 
+            : continuation(result.Value);
+    }
 }

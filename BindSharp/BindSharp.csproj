@@ -8,11 +8,11 @@
 
         <!-- Package Information -->
         <PackageId>BindSharp</PackageId>
-        <Version>1.3.0</Version>
+        <Version>1.4.0</Version>
         <Authors>Gianfranco Díaz</Authors>
         <Company>Gianfranco Díaz</Company>
         <Description>A lightweight functional programming library for .NET that provides Railway-Oriented Programming patterns with Result types. Includes comprehensive async support for composing operations that can succeed or fail.</Description>
-        <PackageTags>csharp;dotnet;functional-programming;result;result-type;either;error-handling;railway-oriented-programming;async;validation;pipeline;monad;exception-handling;try-catch-alternative;unit;equality;implicit-conversion</PackageTags>
+        <PackageTags>csharp;dotnet;functional-programming;result;result-type;either;error-handling;railway-oriented-programming;async;validation;pipeline;monad;exception-handling;try-catch-alternative;unit;equality;implicit-conversion;conditional-branching;bindif</PackageTags>
         <PackageLicenseExpression>LGPL-3.0-or-later</PackageLicenseExpression>
 
         <!-- Repository Information -->
@@ -27,17 +27,17 @@
         <PackageReadmeFile>README.md</PackageReadmeFile>
         <PackageIcon>icon.png</PackageIcon>
         <PackageReleaseNotes>
-            Version 1.3.0 adds major improvements:
-            - Implemented IEquatable for value equality (Results work in collections!)
-            - Added implicit conversions for cleaner syntax (40-50% less boilerplate!)
-            - Improved ToString() for better debugging
+            Version 1.4.0 adds conditional branching to functional pipelines:
+            - Added BindIf/BindIfAsync for conditional processing without breaking chains
+            - Full async support with 7 overloads covering all async scenarios
+            - Async predicate support for database-backed conditional logic
+            - Enables clean short-circuit patterns in Railway-Oriented Programming
             All changes are backwards compatible. No breaking changes.
-            See RELEASE_NOTES_1.3.0.md for full details.
+            See RELEASE_NOTES_1.4.0.md for full details.
         </PackageReleaseNotes>
     </PropertyGroup>
 
     <ItemGroup>
-        <None Include="README.md" Pack="true" PackagePath="\" />
         <None Include="icon.png" Pack="true" PackagePath="\" />
     </ItemGroup>
 

@@ -30,45 +30,35 @@ return await FetchDataAsync()
     );
 ```
 
-## ✨ What's New in 1.3.0
+## ✨ What's New in 1.4.0
 
-**Equality & Implicit Conversions** - Write cleaner, more maintainable code:
+**Conditional Branching** - Clean short-circuit logic in functional pipelines:
 
-- ✅ **Equality Support** - Results can now be compared and used in collections!
-- ✨ **Implicit Conversions** - Return values directly without wrapping (40-50% less code!)
-- 🐛 **Better Debugging** - ToString() override shows "Success(value)" or "Failure(error)"
+- ✅ **BindIf / BindIfAsync** - Conditional processing without breaking chains!
+- ✅ **7 Async Overloads** - Full async support including async predicates
+- ✅ **Database-Backed Conditions** - Async predicates for I/O operations
+- 🎯 **Cleaner Pipelines** - No more nested `Bind` for conditionals
 
-**Before:**
+**Example:**
 ```csharp
-public Result<int, string> Divide(int a, int b)
-{
-    if (b == 0) 
-        return Result<int, string>.Failure("Division by zero");
-    
-    return Result<int, string>.Success(a / b);
-}
+var result = await GetUserAsync(id)
+    .BindIfAsync(
+        user => user.IsComplete,  // If complete, skip
+        async user => await EnrichUserAsync(user)  // Otherwise, enrich
+    );
 ```
 
-**After:**
-```csharp
-public Result<int, string> Divide(int a, int b)
-{
-    if (b == 0) return "Division by zero";  // ✨ Implicit!
-    return a / b;  // ✨ Implicit!
-}
-```
-
-See the [Implicit Conversions](#implicit-conversions---cleaner-syntax) and [Equality Support](#equality-support) sections below!
-
-⚠️ **CRITICAL:** [Read the implicit conversions warning](#-critical-implicit-conversions-warning) to avoid ambiguity issues.
+See the [BindIf](#bindif---conditional-branching) section below!
 
 **Previous Releases:**
-- **Version 1.2.0** added the [Unit Type](#unit-type---representing-no-value) for functional result handling
-- **Version 1.1.0** added [ResultExtensions](#resultextensions---utilities-for-the-real-world) with exception handling, validation, and more
+- **Version 1.3.0** added [Equality Support & Implicit Conversions](#equality-support)
+- **Version 1.2.0** added the [Unit Type](#unit-type---representing-no-value)
+- **Version 1.1.0** added [ResultExtensions](#resultextensions---utilities-for-the-real-world)
 
 ## Features
 
 ✅ **Result<T, TError>** - Explicit success/failure handling  
+✅ **BindIf** - Conditional branching in pipelines  
 ✅ **Equality Support** - Compare Results, use in collections  
 ✨ **Implicit Conversions** - Clean, concise syntax  
 ✅ **Unit Type** - Represent "no value" in functional pipelines  
@@ -446,6 +436,50 @@ public Result<Order, LocalizedError> GetOrder(int id)
             Message = _localizer.GetString(errorCode),
             Timestamp = DateTime.UtcNow
         });
+}
+```
+
+### BindIf - Conditional Branching
+
+**New in 1.4.0!** Conditionally continue processing or short-circuit based on a predicate:
+```csharp
+// Extract JSON that might be prefixed with "request:id:"
+var result = GetPayload()
+    .Map(p => p.TrimStart())
+    .BindIf(
+        // If already JSON, return as-is (short-circuit)
+        p => p.StartsWith("{") || p.StartsWith("["),
+        // Otherwise, extract from prefixed format
+        p => ExtractJsonAfterPrefix(p)
+    );
+```
+
+**Key Difference from Ensure:**
+- `Ensure` - Validates and **fails** if condition is false
+- `BindIf` - **Continues processing** if condition is false
+
+**Real-world example - Conditional enrichment:**
+```csharp
+public async Task<Result<User, string>> GetUserAsync(int id)
+{
+    return await FetchUserAsync(id)
+        .BindIfAsync(
+            user => user.IsComplete,  // If complete, skip enrichment
+            async user => await EnrichFromDatabaseAsync(user)  // Otherwise, enrich
+        )
+        .TapAsync(async user => await CacheUserAsync(user));
+}
+```
+
+**With async predicates (database checks):**
+```csharp
+public async Task<Result<Order, string>> ProcessOrderAsync(Order order)
+{
+    return await Result<Order, string>.Success(order)
+        .BindIfAsync(
+            async o => await IsValidInCacheAsync(o.Id),  // Async check
+            async o => await FetchFromDatabaseAsync(o)   // Fallback
+        );
 }
 ```
 
@@ -912,12 +946,14 @@ return await GetUserAsync(id)
 ### FunctionalResult (Core Operations)
 - `Map<T1, T2, TError>` - Transform success value
 - `Bind<T1, T2, TError>` - Chain operations that can fail
+- `BindIf<T, TError>` - Conditional branching (new in 1.4.0!)
 - `MapError<T, TError, TNewError>` - Transform error value
 - `Match<T, TError, TResult>` - Handle both success and failure
 
 ### AsyncFunctionalResult (Async Core)
 - `MapAsync<T1, T2, TError>` - Async transformations (3 overloads)
 - `BindAsync<T1, T2, TError>` - Async chaining (3 overloads)
+- `BindIfAsync<T, TError>` - Async conditional branching (7 overloads - new in 1.4.0!)
 - `MapErrorAsync<T, TError, TNewError>` - Async error transformation (3 overloads)
 - `MatchAsync<T, TError, TResult>` - Async result handling (7 overloads)
 
