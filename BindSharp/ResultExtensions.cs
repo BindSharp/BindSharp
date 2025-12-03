@@ -313,6 +313,87 @@ public static class ResultExtensions
 
         return result;
     }
+    
+    /// <summary>
+    /// Executes a synchronous side effect on a failed result's error without modifying the result.
+    /// Useful for logging errors, recording metrics, or triggering error-handling side effects in a functional pipeline.
+    /// </summary>
+    /// <typeparam name="T">The type of the success value.</typeparam>
+    /// <typeparam name="TError">The type of the error value.</typeparam>
+    /// <param name="result">The result to tap into.</param>
+    /// <param name="action">The side effect to execute on the error value.</param>
+    /// <returns>The original result unchanged.</returns>
+    /// <example>
+    /// <code>
+    /// var result = Result&lt;int, string&gt;.Failure("Invalid input")
+    ///     .TapError(err => Console.WriteLine($"Error: {err}"))
+    ///     .MapError(err => $"Processing failed: {err}");
+    /// // Prints "Error: Invalid input" and returns Failure("Processing failed: Invalid input")
+    /// </code>
+    /// </example>
+    public static Result<T, TError> TapError<T, TError>(
+        this Result<T, TError> result,
+        Action<TError> action)
+    {
+        if (result.IsFailure)
+            action(result.Error);
+
+        return result;
+    }
+
+    /// <summary>
+    /// Executes an asynchronous side effect on a failed result's error without modifying the result.
+    /// Useful for async error logging, sending error notifications, or recording async error metrics in a functional pipeline.
+    /// </summary>
+    /// <typeparam name="T">The type of the success value.</typeparam>
+    /// <typeparam name="TError">The type of the error value.</typeparam>
+    /// <param name="result">The result to tap into.</param>
+    /// <param name="action">The async side effect to execute on the error value.</param>
+    /// <returns>A task containing the original result unchanged.</returns>
+    /// <example>
+    /// <code>
+    /// var result = await Result&lt;User, string&gt;.Failure("Database connection failed")
+    ///     .TapErrorAsync(async err => await LogErrorToExternalServiceAsync(err))
+    ///     .MapErrorAsync(async err => await EnrichErrorWithContextAsync(err));
+    /// </code>
+    /// </example>
+    public static async Task<Result<T, TError>> TapErrorAsync<T, TError>(
+        this Result<T, TError> result,
+        Func<TError, Task> action)
+    {
+        if (result.IsFailure)
+            await action(result.Error);
+
+        return result;
+    }
+
+    /// <summary>
+    /// Executes an asynchronous side effect on a failed async result's error without modifying the result.
+    /// Useful for async error logging, sending error notifications, or recording async error metrics in a functional pipeline.
+    /// </summary>
+    /// <typeparam name="T">The type of the success value.</typeparam>
+    /// <typeparam name="TError">The type of the error value.</typeparam>
+    /// <param name="resultTask">The async result to tap into.</param>
+    /// <param name="action">The async side effect to execute on the error value.</param>
+    /// <returns>A task containing the original result unchanged.</returns>
+    /// <example>
+    /// <code>
+    /// var result = await GetUserAsync()
+    ///     .TapErrorAsync(async err => await _logger.LogErrorAsync(err))
+    ///     .TapErrorAsync(async err => await _metrics.RecordErrorAsync(err));
+    /// </code>
+    /// </example>
+    public static async Task<Result<T, TError>> TapErrorAsync<T, TError>(
+        this Task<Result<T, TError>> resultTask,
+        Func<TError, Task> action)
+    {
+        Result<T, TError> result = await resultTask;
+
+        if (result.IsFailure)
+            await action(result.Error);
+
+        return result;
+    }
 
     #endregion
 

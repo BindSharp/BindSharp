@@ -1,4 +1,4 @@
-namespace BindSharp.Test;
+namespace BindSharp.Test.FunctionalResultTests;
 
 /// <summary>
 /// Unit tests for BindIf and BindIfAsync methods.
