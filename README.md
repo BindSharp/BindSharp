@@ -30,28 +30,27 @@ return await FetchDataAsync()
     );
 ```
 
-## ✨ What's New in 1.4.1
+## ✨ What's New in 1.5.0
 
-**Conditional Processing** - Execute operations based on conditions in functional pipelines:
+**Error-Specific Side Effects** - Clean logging and metrics for failures:
 
-- ✅ **BindIf / BindIfAsync** - Standard if-then logic in Railway-Oriented Programming!
-- ✅ **7 Async Overloads** - Full async support including async predicates
-- ✅ **Database-Backed Conditions** - Async predicates for I/O operations
-- 🎯 **Intuitive Behavior** - Works like standard `if` statements
+- ✅ **TapError / TapErrorAsync** - Execute side effects on errors without transformation!
+- ✅ **3 Async Overloads** - Full async support matching Tap pattern
+- ✅ **Symmetric Design** - Tap for success, TapError for failure
+- 🎯 **Better Observability** - Log, track, and alert on errors cleanly
 
 **Example:**
 ```csharp
-// If user is incomplete, then enrich
+// Clean error logging without transforming the error
 var result = await GetUserAsync(id)
-    .BindIfAsync(
-        user => !user.IsComplete,  // If TRUE
-        async user => await EnrichUserAsync(user)  // Then execute
-    );
+    .TapAsync(user => _logger.LogInfoAsync($"User {user.Id} loaded"))
+    .TapErrorAsync(error => _logger.LogErrorAsync(error));  // New!
 ```
 
-See the [BindIf](#bindif---conditional-processing) section below!
+See the [TapError](#taperror---error-specific-side-effects) section below!
 
 **Previous Releases:**
+- **Version 1.4.1** added [BindIf - Conditional Processing](#bindif---conditional-processing)
 - **Version 1.3.0** added [Equality Support & Implicit Conversions](#equality-support)
 - **Version 1.2.0** added the [Unit Type](#unit-type---representing-no-value)
 - **Version 1.1.0** added [ResultExtensions](#resultextensions---utilities-for-the-real-world)
@@ -746,6 +745,51 @@ public async Task<Result<User, string>> UpdateUserAsync(int id, UpdateUserReques
 }
 ```
 
+### TapError / TapErrorAsync - Error-Specific Side Effects
+
+**New in 1.5.0!** Execute side effects specifically on errors without modifying the result:
+```csharp
+var result = await ProcessDataAsync()
+    .TapAsync(data => _logger.LogInfoAsync($"Processing {data.Id}"))
+    .TapErrorAsync(error => _logger.LogErrorAsync(error));  // Only on failure!
+```
+
+**How it works:**
+- Result is **failure** → Action executes with error value
+- Result is **success** → Action is skipped
+- Always returns the original result unchanged
+
+**Real-world example - Complete observability:**
+```csharp
+public async Task<Result<Order, string>> ProcessOrderAsync(Order order)
+{
+    return await ValidateOrder(order)
+        .TapAsync(_ => _logger.LogInfoAsync("Validation passed"))
+        .BindAsync(async o => await SaveOrderAsync(o))
+        .TapAsync(async o => {
+            await _logger.LogInfoAsync($"Order {o.Id} saved");
+            await _metrics.IncrementAsync("orders.success");
+        })
+        .TapErrorAsync(async error => {
+            await _logger.LogErrorAsync($"Order failed: {error}");
+            await _metrics.IncrementAsync("orders.failed");
+            await _alerting.NotifyAdminAsync(error);
+        });
+}
+```
+
+**Key Difference from MapError:**
+- `MapError` - Transforms the error value (returns different error)
+- `TapError` - Executes side effects only (returns same error)
+
+**Symmetric Design:**
+```csharp
+// Tap and TapError are symmetric - one for success, one for failure
+result
+    .Tap(value => Console.WriteLine($"Success: {value}"))      // Only on success
+    .TapError(error => Console.WriteLine($"Error: {error}"));  // Only on failure
+```
+
 ### Using / UsingAsync - Resource Management
 
 Safe resource management with guaranteed disposal (the "bracket" pattern):
@@ -834,7 +878,7 @@ public class OrderService
             .BindAsync(async c => await CalculatePriceAsync(c))
             .TapAsync(async c => await _metrics.IncrementAsync("orders.pricing.completed"))
             
-            // Conditional processing (new in 1.4.1!)
+            // Conditional processing
             .BindIfAsync(
                 async order => await RequiresSpecialHandlingAsync(order),
                 async order => await ApplySpecialHandlingAsync(order)
@@ -852,9 +896,16 @@ public class OrderService
             .TapAsync(async order => await _emailService.SendConfirmationAsync(order))
             .TapAsync(async order => await _sms.SendNotificationAsync(order.CustomerId))
             
-            // Transform and audit (with implicit conversions!)
+            // Transform and audit
             .MapAsync(order => new OrderConfirmation(order))
-            .TapAsync(async conf => await _auditLog.LogOrderCreatedAsync(conf));
+            .TapAsync(async conf => await _auditLog.LogOrderCreatedAsync(conf))
+            
+            // Error handling (new in 1.5.0!)
+            .TapErrorAsync(async error => {
+                await _logger.LogErrorAsync($"Order failed: {error}");
+                await _metrics.IncrementAsync("orders.failed");
+                await _alerting.NotifyAdminAsync($"Order processing failure: {error}");
+            });
     }
     
     private async Task<Result<Order, OrderError>> ProcessPaymentWithTransactionAsync(Order order)
@@ -904,6 +955,11 @@ public class OrderService
 18. **Use async predicates for I/O** - Database checks, cache lookups, etc.
 19. **Remember: TRUE executes, FALSE skips** - Standard if-then behavior
 
+### TapError (NEW in 1.5.0)
+20. **Use TapError for error logging** - Log errors without transforming them
+21. **Use Tap + TapError for observability** - Complete success/failure tracking
+22. **Keep error actions simple** - Just logging, metrics, alerts
+23. **Don't transform in TapError** - Use MapError if you need to change the error
 ### Error Handling Strategy
 ```csharp
 // ✅ Good: Specific error types
@@ -979,7 +1035,8 @@ return await GetUserAsync(id)
 - `Ensure<T, TError>` / `EnsureAsync<T, TError>` - Validation
 - `EnsureNotNull<T, TError>` / `EnsureNotNullAsync<T, TError>` - Null safety
 - `ToResult<T, TError>` - Convert nullable to Result
-- `Tap<T, TError>` / `TapAsync<T, TError>` - Side effects (3 overloads)
+- `Tap<T, TError>` / `TapAsync<T, TError>` - Success side effects (3 overloads)
+- `TapError<T, TError>` / `TapErrorAsync<T, TError>` - Error side effects (3 overloads - new in 1.5.0!)
 - `Using<TResource, TResult, TError>` / `UsingAsync` - Resource management
 - `AsTask<T, TError>` - Convert Result to Task
 
