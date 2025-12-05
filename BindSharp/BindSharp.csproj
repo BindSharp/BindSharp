@@ -8,17 +8,17 @@
 
         <!-- Package Information -->
         <PackageId>BindSharp</PackageId>
-        <Version>1.0.0</Version>
+        <Version>1.5.0</Version>
         <Authors>Gianfranco Díaz</Authors>
         <Company>Gianfranco Díaz</Company>
         <Description>A lightweight functional programming library for .NET that provides Railway-Oriented Programming patterns with Result types. Includes comprehensive async support for composing operations that can succeed or fail.</Description>
-        <PackageTags>functional;railway-oriented-programming;result;error-handling;async;monads</PackageTags>
+        <PackageTags>csharp;dotnet;functional-programming;result;result-type;either;error-handling;railway-oriented-programming;async;validation;pipeline;monad;exception-handling;try-catch-alternative;unit;equality;implicit-conversion;conditional-branching;bindif</PackageTags>
         <PackageLicenseExpression>LGPL-3.0-or-later</PackageLicenseExpression>
 
         <!-- Repository Information -->
-        <RepositoryUrl>https://github.com/yourusername/BindSharp</RepositoryUrl>
+        <RepositoryUrl>https://github.com/GDB-11/BindSharp/</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
-        <PackageProjectUrl>https://github.com/yourusername/BindSharp</PackageProjectUrl>
+        <PackageProjectUrl>https://github.com/GDB-11/BindSharp/</PackageProjectUrl>
 
         <!-- Documentation -->
         <GenerateDocumentationFile>true</GenerateDocumentationFile>
@@ -26,7 +26,15 @@
         <!-- Misc -->
         <PackageReadmeFile>README.md</PackageReadmeFile>
         <PackageIcon>icon.png</PackageIcon>
-        <PackageReleaseNotes>Initial release with Result type and functional extensions for sync and async operations.</PackageReleaseNotes>        
+        <PackageReleaseNotes>
+            Version 1.5.0 adds error-specific side effects to functional pipelines:
+            - Added TapError/TapErrorAsync for clean error logging and metrics without transformation
+            - Full async support with 3 overloads matching Tap pattern
+            - Symmetric design: Tap for success side effects, TapError for error side effects
+            - Enables better observability and error handling in Railway-Oriented Programming
+            All changes are backwards compatible. No breaking changes.
+            See RELEASE_NOTES_1.5.0.md for full details.
+        </PackageReleaseNotes>
     </PropertyGroup>
 
     <ItemGroup>

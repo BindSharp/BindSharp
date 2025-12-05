@@ -2,6 +2,8 @@
 Microsoft Visual Studio Solution File, Format Version 12.00
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BindSharp", "BindSharp\BindSharp.csproj", "{BF510220-DB58-4076-85E2-D6089EDDC1FC}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BindSharp.Test", "BindSharp.Test\BindSharp.Test.csproj", "{F634521D-8B7C-4C54-8DA0-1678DD11C5E6}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -12,5 +14,9 @@ Global
 		{BF510220-DB58-4076-85E2-D6089EDDC1FC}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{BF510220-DB58-4076-85E2-D6089EDDC1FC}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{BF510220-DB58-4076-85E2-D6089EDDC1FC}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F634521D-8B7C-4C54-8DA0-1678DD11C5E6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F634521D-8B7C-4C54-8DA0-1678DD11C5E6}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F634521D-8B7C-4C54-8DA0-1678DD11C5E6}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F634521D-8B7C-4C54-8DA0-1678DD11C5E6}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

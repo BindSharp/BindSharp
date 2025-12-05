@@ -110,4 +110,49 @@ public static class FunctionalResult
     public static TResult Match<T, TError, TResult>
         (this Result<T, TError> result, Func<T, TResult> mapValue, Func<TError, TResult> mapError) =>
         result.IsSuccess ? mapValue(result.Value) : mapError(result.Error);
+    
+    /// <summary>
+    /// Conditionally applies a continuation function based on a predicate.
+    /// If the predicate returns true, the continuation function is applied.
+    /// If the predicate returns false, the original result is returned unchanged (short-circuit).
+    /// This enables conditional processing in functional pipelines.
+    /// </summary>
+    /// <typeparam name="T">The type of the success value.</typeparam>
+    /// <typeparam name="TError">The type of the error value.</typeparam>
+    /// <param name="result">The result to evaluate.</param>
+    /// <param name="predicate">The condition to check against the success value.</param>
+    /// <param name="continuation">The function to apply if the predicate returns true.</param>
+    /// <returns>
+    /// The result of the continuation function if the predicate returns true,
+    /// the original result unchanged if the predicate returns false,
+    /// or the original error if the result was already failed.
+    /// </returns>
+    /// <example>
+    /// <code>
+    /// // Process data only if it needs processing
+    /// var result = GetData()
+    ///     .BindIf(
+    ///         data => data.NeedsProcessing,
+    ///         data => ProcessData(data)
+    ///     );
+    /// 
+    /// // Multiple conditional steps
+    /// var validated = GetUser()
+    ///     .BindIf(
+    ///         user => !user.IsComplete,
+    ///         user => EnrichFromDatabase(user)  // Only enrich incomplete users
+    ///     );
+    /// </code>
+    /// </example>
+    public static Result<T, TError> BindIf<T, TError>(
+        this Result<T, TError> result,
+        Func<T, bool> predicate,
+        Func<T, Result<T, TError>> continuation)
+    {
+        if (result.IsFailure) return result;
+    
+        return predicate(result.Value) 
+            ? continuation(result.Value)
+            : result;
+    }
 }

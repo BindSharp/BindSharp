@@ -313,4 +313,241 @@ public static class AsyncFunctionalResult
     public static async Task<TResult> MatchAsync<T, TError, TResult>
         (this Task<Result<T, TError>> result, Func<T, Task<TResult>> onSuccessAsync, Func<TError, Task<TResult>> onFailureAsync) =>
         await (await result).MatchAsync(onSuccessAsync, onFailureAsync);
+    
+    #region BindIf - Conditional Processing
+
+    /// <summary>
+    /// Conditionally applies a continuation function based on a predicate.
+    /// Evaluates an async result with synchronous predicate and continuation.
+    /// Use this when you have a Task&lt;Result&gt; and want to apply conditional logic synchronously.
+    /// </summary>
+    /// <typeparam name="T">The type of the success value.</typeparam>
+    /// <typeparam name="TError">The type of the error value.</typeparam>
+    /// <param name="result">The async result to evaluate.</param>
+    /// <param name="predicate">The condition to check against the success value.</param>
+    /// <param name="continuation">The function to apply if the predicate returns true.</param>
+    /// <returns>
+    /// A task containing the result of the continuation if the predicate returns true,
+    /// the original result if the predicate returns false,
+    /// or the original error if the result was already failed.
+    /// </returns>
+    /// <example>
+    /// <code>
+    /// var result = await FetchDataAsync()
+    ///     .BindIfAsync(
+    ///         data => data.RequiresValidation,
+    ///         data => ValidateData(data)
+    ///     );
+    /// </code>
+    /// </example>
+    public static async Task<Result<T, TError>> BindIfAsync<T, TError>(
+        this Task<Result<T, TError>> result,
+        Func<T, bool> predicate,
+        Func<T, Result<T, TError>> continuation) =>
+        (await result).BindIf(predicate, continuation);
+
+    /// <summary>
+    /// Conditionally applies an asynchronous continuation function based on a predicate.
+    /// Evaluates a result with synchronous predicate and asynchronous continuation.
+    /// Use this when you have a Result and the continuation requires async processing.
+    /// </summary>
+    /// <typeparam name="T">The type of the success value.</typeparam>
+    /// <typeparam name="TError">The type of the error value.</typeparam>
+    /// <param name="result">The result to evaluate.</param>
+    /// <param name="predicate">The condition to check against the success value.</param>
+    /// <param name="continuationAsync">The async function to apply if the predicate returns true.</param>
+    /// <returns>
+    /// A task containing the result of the continuation if the predicate returns true,
+    /// the original result if the predicate returns false,
+    /// or the original error if the result was already failed.
+    /// </returns>
+    /// <example>
+    /// <code>
+    /// var user = Result&lt;User, string&gt;.Success(currentUser);
+    /// var enriched = await user.BindIfAsync(
+    ///     u => !u.IsComplete,
+    ///     async u => await FetchAdditionalDataAsync(u)
+    /// );
+    /// </code>
+    /// </example>
+    public static async Task<Result<T, TError>> BindIfAsync<T, TError>(
+        this Result<T, TError> result,
+        Func<T, bool> predicate,
+        Func<T, Task<Result<T, TError>>> continuationAsync) =>
+        result.IsFailure
+            ? result
+            : predicate(result.Value)
+                ? await continuationAsync(result.Value)
+                : result;
+
+    /// <summary>
+    /// Conditionally applies an asynchronous continuation function based on a predicate.
+    /// Evaluates an async result with synchronous predicate and asynchronous continuation.
+    /// Use this when you have a Task&lt;Result&gt; and the continuation requires async processing.
+    /// This is the most common async pattern for conditional processing.
+    /// </summary>
+    /// <typeparam name="T">The type of the success value.</typeparam>
+    /// <typeparam name="TError">The type of the error value.</typeparam>
+    /// <param name="result">The async result to evaluate.</param>
+    /// <param name="predicate">The condition to check against the success value.</param>
+    /// <param name="continuationAsync">The async function to apply if the predicate returns true.</param>
+    /// <returns>
+    /// A task containing the result of the continuation if the predicate returns true,
+    /// the original result if the predicate returns false,
+    /// or the original error if the result was already failed.
+    /// </returns>
+    /// <example>
+    /// <code>
+    /// // Complete async pipeline with conditional processing
+    /// var result = await FetchDataAsync()
+    ///     .MapAsync(data => NormalizeData(data))
+    ///     .BindIfAsync(
+    ///         data => data.RequiresEnrichment,
+    ///         async data => await EnrichDataAsync(data)
+    ///     )
+    ///     .BindAsync(async data => await SaveAsync(data));
+    /// </code>
+    /// </example>
+    public static async Task<Result<T, TError>> BindIfAsync<T, TError>(
+        this Task<Result<T, TError>> result,
+        Func<T, bool> predicate,
+        Func<T, Task<Result<T, TError>>> continuationAsync) =>
+        await (await result).BindIfAsync(predicate, continuationAsync);
+
+    /// <summary>
+    /// Conditionally applies a continuation function based on an asynchronous predicate.
+    /// Evaluates a result with async predicate and synchronous continuation.
+    /// Use this when the condition check itself requires async operations (e.g., database lookup)
+    /// but the continuation can be handled synchronously.
+    /// </summary>
+    /// <typeparam name="T">The type of the success value.</typeparam>
+    /// <typeparam name="TError">The type of the error value.</typeparam>
+    /// <param name="result">The result to evaluate.</param>
+    /// <param name="predicateAsync">The async condition to check against the success value.</param>
+    /// <param name="continuation">The synchronous function to apply if the predicate returns true.</param>
+    /// <returns>
+    /// A task containing the result of the continuation if the predicate returns true,
+    /// the original result if the predicate returns false,
+    /// or the original error if the result was already failed.
+    /// </returns>
+    /// <example>
+    /// <code>
+    /// var user = Result&lt;User, string&gt;.Success(currentUser);
+    /// var processed = await user.BindIfAsync(
+    ///     async u => await RequiresUpdateAsync(u.Id),
+    ///     u => UpdateUser(u)  // Sync update
+    /// );
+    /// </code>
+    /// </example>
+    public static async Task<Result<T, TError>> BindIfAsync<T, TError>(
+        this Result<T, TError> result,
+        Func<T, Task<bool>> predicateAsync,
+        Func<T, Result<T, TError>> continuation) =>
+        result.IsFailure
+            ? result
+            : await predicateAsync(result.Value)
+                ? continuation(result.Value)
+                : result;
+
+    /// <summary>
+    /// Conditionally applies a continuation function based on an asynchronous predicate.
+    /// Evaluates an async result with async predicate and synchronous continuation.
+    /// Use this when you have a Task&lt;Result&gt; and the condition check requires async operations
+    /// but the continuation can be handled synchronously.
+    /// </summary>
+    /// <typeparam name="T">The type of the success value.</typeparam>
+    /// <typeparam name="TError">The type of the error value.</typeparam>
+    /// <param name="result">The async result to evaluate.</param>
+    /// <param name="predicateAsync">The async condition to check against the success value.</param>
+    /// <param name="continuation">The synchronous function to apply if the predicate returns true.</param>
+    /// <returns>
+    /// A task containing the result of the continuation if the predicate returns true,
+    /// the original result if the predicate returns false,
+    /// or the original error if the result was already failed.
+    /// </returns>
+    /// <example>
+    /// <code>
+    /// var result = await FetchUserAsync()
+    ///     .BindIfAsync(
+    ///         async u => await HasPermissionAsync(u.Id, "admin"),
+    ///         u => CreateAdminView(u)
+    ///     );
+    /// </code>
+    /// </example>
+    public static async Task<Result<T, TError>> BindIfAsync<T, TError>(
+        this Task<Result<T, TError>> result,
+        Func<T, Task<bool>> predicateAsync,
+        Func<T, Result<T, TError>> continuation) =>
+        await (await result).BindIfAsync(predicateAsync, continuation);
+
+    /// <summary>
+    /// Conditionally applies an asynchronous continuation function based on an asynchronous predicate.
+    /// Evaluates a result with async predicate and async continuation.
+    /// Use this when the condition check itself requires async operations (e.g., database lookup)
+    /// and the continuation also requires async processing.
+    /// </summary>
+    /// <typeparam name="T">The type of the success value.</typeparam>
+    /// <typeparam name="TError">The type of the error value.</typeparam>
+    /// <param name="result">The result to evaluate.</param>
+    /// <param name="predicateAsync">The async condition to check against the success value.</param>
+    /// <param name="continuationAsync">The async function to apply if the predicate returns true.</param>
+    /// <returns>
+    /// A task containing the result of the continuation if the predicate returns true,
+    /// the original result if the predicate returns false,
+    /// or the original error if the result was already failed.
+    /// </returns>
+    /// <example>
+    /// <code>
+    /// var user = Result&lt;User, string&gt;.Success(currentUser);
+    /// var enriched = await user.BindIfAsync(
+    ///     async u => await RequiresEnrichmentAsync(u.Id),
+    ///     async u => await FetchAdditionalDataAsync(u)
+    /// );
+    /// </code>
+    /// </example>
+    public static async Task<Result<T, TError>> BindIfAsync<T, TError>(
+        this Result<T, TError> result,
+        Func<T, Task<bool>> predicateAsync,
+        Func<T, Task<Result<T, TError>>> continuationAsync) =>
+        result.IsFailure
+            ? result
+            : await predicateAsync(result.Value)
+                ? await continuationAsync(result.Value)
+                : result;
+
+    /// <summary>
+    /// Conditionally applies an asynchronous continuation function based on an asynchronous predicate.
+    /// Evaluates an async result with async predicate and async continuation.
+    /// Use this when you have a Task&lt;Result&gt; and both the condition check and continuation
+    /// require async operations. This is the most flexible async pattern for conditional processing.
+    /// </summary>
+    /// <typeparam name="T">The type of the success value.</typeparam>
+    /// <typeparam name="TError">The type of the error value.</typeparam>
+    /// <param name="result">The async result to evaluate.</param>
+    /// <param name="predicateAsync">The async condition to check against the success value.</param>
+    /// <param name="continuationAsync">The async function to apply if the predicate returns true.</param>
+    /// <returns>
+    /// A task containing the result of the continuation if the predicate returns true,
+    /// the original result if the predicate returns false,
+    /// or the original error if the result was already failed.
+    /// </returns>
+    /// <example>
+    /// <code>
+    /// // Complete async pipeline with async conditional check
+    /// var result = await FetchUserAsync()
+    ///     .MapAsync(async u => await NormalizeUserAsync(u))
+    ///     .BindIfAsync(
+    ///         async u => await RequiresEnrichmentAsync(u.Id),
+    ///         async u => await EnrichFromExternalApiAsync(u)
+    ///     )
+    ///     .BindAsync(async u => await SaveUserAsync(u));
+    /// </code>
+    /// </example>
+    public static async Task<Result<T, TError>> BindIfAsync<T, TError>(
+        this Task<Result<T, TError>> result,
+        Func<T, Task<bool>> predicateAsync,
+        Func<T, Task<Result<T, TError>>> continuationAsync) =>
+        await (await result).BindIfAsync(predicateAsync, continuationAsync);
+
+    #endregion
 }
