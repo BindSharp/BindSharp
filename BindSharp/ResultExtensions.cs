@@ -83,6 +83,98 @@ public static class ResultExtensions
             return Result<T, TError>.Failure(errorFactory(ex));
         }
     }
+    
+    /// <summary>
+    /// Executes code that may throw exceptions and converts it to a Result with the exception as the error.
+    /// This overload is useful when you want to inspect or log the exception before transforming it to a custom error type.
+    /// Use <see cref="TapError{T,TError}"/> to log the exception, then <see cref="MapError{T,TError,TNewError}"/> to convert to your error type.
+    /// </summary>
+    /// <typeparam name="T">The type of the success value.</typeparam>
+    /// <param name="operation">The operation that may throw an exception.</param>
+    /// <returns>
+    /// A successful result containing the operation's return value, 
+    /// or a failure result containing the exception.
+    /// </returns>
+    /// <example>
+    /// <code>
+    /// // Log exception with full context before transforming
+    /// var result = ResultExtensions.Try(() => int.Parse("invalid"))
+    ///     .TapError(ex => _logger.LogError(ex, "Parse failed"))
+    ///     .MapError(ex => $"Invalid number: {ex.Message}");
+    /// 
+    /// // Pattern match on specific exception types
+    /// var result = ResultExtensions.Try(() => File.ReadAllText("file.txt"))
+    ///     .TapError(ex => {
+    ///         if (ex is FileNotFoundException fnf)
+    ///             _logger.LogWarning("File missing: {0}", fnf.FileName);
+    ///         else
+    ///             _logger.LogError(ex, "Read failed");
+    ///     })
+    ///     .MapError(ex => ex switch {
+    ///         FileNotFoundException => "File not found",
+    ///         UnauthorizedAccessException => "Permission denied",
+    ///         _ => "Failed to read file"
+    ///     });
+    /// </code>
+    /// </example>
+    public static Result<T, Exception> Try<T>(Func<T> operation)
+    {
+        try
+        {
+            return Result<T, Exception>.Success(operation());
+        }
+        catch (Exception ex)
+        {
+            return Result<T, Exception>.Failure(ex);
+        }
+    }
+
+    /// <summary>
+    /// Asynchronously executes code that may throw exceptions and converts it to a Result with the exception as the error.
+    /// This overload is useful when you want to inspect or log the exception before transforming it to a custom error type.
+    /// Use <see cref="TapErrorAsync{T,TError}"/> to log the exception, then <see cref="MapErrorAsync{T,TError,TNewError}"/> to convert to your error type.
+    /// </summary>
+    /// <typeparam name="T">The type of the success value.</typeparam>
+    /// <param name="operation">The async operation that may throw an exception.</param>
+    /// <returns>
+    /// A task containing a successful result with the operation's return value,
+    /// or a failure result containing the exception.
+    /// </returns>
+    /// <example>
+    /// <code>
+    /// // Log exception with full context before transforming
+    /// var result = await ResultExtensions.TryAsync(
+    ///         async () => await httpClient.GetStringAsync("https://api.example.com"))
+    ///     .TapErrorAsync(async ex => await _logger.LogErrorAsync(ex, "HTTP request failed"))
+    ///     .MapErrorAsync(ex => $"API error: {ex.Message}");
+    /// 
+    /// // Async pattern matching on specific exception types
+    /// var result = await ResultExtensions.TryAsync(
+    ///         async () => await database.QueryAsync("SELECT * FROM users"))
+    ///     .TapErrorAsync(async ex => {
+    ///         if (ex is TimeoutException timeout)
+    ///             await _metrics.RecordTimeoutAsync();
+    ///         else
+    ///             await _logger.LogErrorAsync(ex, "Query failed");
+    ///     })
+    ///     .MapErrorAsync(ex => ex switch {
+    ///         TimeoutException => "Database timeout",
+    ///         SqlException => "Database error",
+    ///         _ => "Query failed"
+    ///     });
+    /// </code>
+    /// </example>
+    public static async Task<Result<T, Exception>> TryAsync<T>(Func<Task<T>> operation)
+    {
+        try
+        {
+            return Result<T, Exception>.Success(await operation());
+        }
+        catch (Exception ex)
+        {
+            return Result<T, Exception>.Failure(ex);
+        }
+    }
 
     #endregion
 
@@ -315,6 +407,34 @@ public static class ResultExtensions
     }
     
     /// <summary>
+    /// Executes a synchronous side effect on a successful async result's value without modifying the result.
+    /// Use this when you have a Task&lt;Result&gt; and want to perform sync side effects (like simple logging).
+    /// </summary>
+    /// <typeparam name="T">The type of the success value.</typeparam>
+    /// <typeparam name="TError">The type of the error value.</typeparam>
+    /// <param name="resultTask">The async result to tap into.</param>
+    /// <param name="action">The synchronous side effect to execute on the success value.</param>
+    /// <returns>A task containing the original result unchanged.</returns>
+    /// <example>
+    /// <code>
+    /// var result = await GetUserAsync()
+    ///     .TapAsync(u => Console.WriteLine($"User: {u.Name}"))  // Sync action
+    ///     .MapAsync(u => u.Id);
+    /// </code>
+    /// </example>
+    public static async Task<Result<T, TError>> TapAsync<T, TError>(
+        this Task<Result<T, TError>> resultTask,
+        Action<T> action)
+    {
+        Result<T, TError> result = await resultTask;
+
+        if (result.IsSuccess)
+            action(result.Value);
+
+        return result;
+    }
+    
+    /// <summary>
     /// Executes a synchronous side effect on a failed result's error without modifying the result.
     /// Useful for logging errors, recording metrics, or triggering error-handling side effects in a functional pipeline.
     /// </summary>
@@ -391,6 +511,34 @@ public static class ResultExtensions
 
         if (result.IsFailure)
             await action(result.Error);
+
+        return result;
+    }
+    
+    /// <summary>
+    /// Executes a synchronous side effect on a failed async result's error without modifying the result.
+    /// Use this when you have a Task&lt;Result&gt; and want to perform sync error handling (like simple logging).
+    /// </summary>
+    /// <typeparam name="T">The type of the success value.</typeparam>
+    /// <typeparam name="TError">The type of the error value.</typeparam>
+    /// <param name="resultTask">The async result to tap into.</param>
+    /// <param name="action">The synchronous side effect to execute on the error value.</param>
+    /// <returns>A task containing the original result unchanged.</returns>
+    /// <example>
+    /// <code>
+    /// var result = await GetUserAsync()
+    ///     .TapErrorAsync(err => Console.WriteLine($"Error: {err}"))  // Sync action
+    ///     .MapErrorAsync(err => $"Failed: {err}");
+    /// </code>
+    /// </example>
+    public static async Task<Result<T, TError>> TapErrorAsync<T, TError>(
+        this Task<Result<T, TError>> resultTask,
+        Action<TError> action)
+    {
+        Result<T, TError> result = await resultTask;
+
+        if (result.IsFailure)
+            action(result.Error);
 
         return result;
     }
