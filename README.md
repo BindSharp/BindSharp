@@ -6,15 +6,29 @@ A lightweight, powerful functional programming library for .NET that makes error
 
 Traditional error handling is messy:
 ```csharp
-try {
+try
+{
     var data = await FetchDataAsync();
-    var validated = ValidateData(data);
-    var transformed = TransformData(validated);
-    return await SaveAsync(transformed);
+    
+    try {
+        var validated = ValidateData(data);
+        var transformed = TransformData(validated);
+        return await SaveAsync(transformed);
+    }
+    catch (ValidationException vex) {
+        _logger.LogError(vex, "Validation failed");
+        throw; // Loses context, can't compose further
+    }
 }
-catch (Exception ex) {
-    // What failed? Where? How do we recover?
-    return null; // 😢
+catch (HttpRequestException hex)
+{
+    _logger.LogError(hex, "Network error");
+    throw; // Caller has to deal with it
+}
+catch (Exception ex)
+{
+    _logger.LogError(ex, "Unknown error");
+    throw;
 }
 ```
 
@@ -23,13 +37,23 @@ With BindSharp, it's clean and composable:
 using BindSharp;
 using BindSharp.Extensions;
 
-return await FetchDataAsync()
+return await Result.TryAsync(() => FetchDataAsync())
+    .TapErrorAsync(ex => _logger.LogError(ex, "Fetch failed"))  // Sync logging in async pipeline
+    .MapErrorAsync(ex => "Network error")    
     .BindAsync(ValidateDataAsync)
-    .MapAsync(TransformData)
+    .TapErrorAsync(err => _logger.LogError("Validation failed: {Error}", err))  // Sync logging    
+    .BindIfAsync(  // Conditional processing
+        data => data.RequiresTransformation,
+        async data => await TransformDataAsync(data)
+    )    
     .BindAsync(SaveAsync)
+    .DoAsync(  // Combined side effects
+        data => _logger.LogInfo("Saved: {Data}", data),
+        error => _logger.LogError("Save failed: {Error}", error)
+    )    
     .MatchAsync(
-        success => $"Saved: {success}",
-        error => $"Failed: {error}"
+        success => $"✅ Saved: {success}",
+        error => $"❌ Failed: {error}"
     );
 ```
 
@@ -169,7 +193,7 @@ public Result<int, string> ParseAge(string input)
     return Result<int, string>.Success(age);
 }
 
-// After: Clean! (53% less code)
+// After: Clean! (50% less code)
 public Result<int, string> ParseAge(string input)
 {
     if (string.IsNullOrWhiteSpace(input)) return "Age is required";
