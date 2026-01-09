@@ -6,65 +6,83 @@ A lightweight, powerful functional programming library for .NET that makes error
 
 Traditional error handling is messy:
 ```csharp
-try {
+try
+{
     var data = await FetchDataAsync();
-    var validated = ValidateData(data);
-    var transformed = TransformData(validated);
-    return await SaveAsync(transformed);
+    
+    try {
+        var validated = ValidateData(data);
+        var transformed = TransformData(validated);
+        return await SaveAsync(transformed);
+    }
+    catch (ValidationException vex) {
+        _logger.LogError(vex, "Validation failed");
+        throw; // Loses context, can't compose further
+    }
 }
-catch (Exception ex) {
-    // What failed? Where? How do we recover?
-    return null; // 😢
+catch (HttpRequestException hex)
+{
+    _logger.LogError(hex, "Network error");
+    throw; // Caller has to deal with it
+}
+catch (Exception ex)
+{
+    _logger.LogError(ex, "Unknown error");
+    throw;
 }
 ```
 
 With BindSharp, it's clean and composable:
 ```csharp
-return await FetchDataAsync()
+using BindSharp;
+using BindSharp.Extensions;
+
+return await Result.TryAsync(() => FetchDataAsync())
+    .TapErrorAsync(ex => _logger.LogError(ex, "Fetch failed"))  // Sync logging in async pipeline
+    .MapErrorAsync(ex => "Network error")    
     .BindAsync(ValidateDataAsync)
-    .MapAsync(TransformData)
+    .TapErrorAsync(err => _logger.LogError("Validation failed: {Error}", err))  // Sync logging    
+    .BindIfAsync(  // Conditional processing
+        data => data.RequiresTransformation,
+        async data => await TransformDataAsync(data)
+    )    
     .BindAsync(SaveAsync)
+    .DoAsync(  // Combined side effects
+        data => _logger.LogInfo("Saved: {Data}", data),
+        error => _logger.LogError("Save failed: {Error}", error)
+    )    
     .MatchAsync(
-        success => $"Saved: {success}",
-        error => $"Failed: {error}"
+        success => $"✅ Saved: {success}",
+        error => $"❌ Failed: {error}"
     );
 ```
 
-## ✨ What's New in 1.6.0
+## ✨ What's New in 2.0.0
 
-**Exception-First Try & Mixed Async/Sync Pipelines** - Cleaner exception handling and natural async composition:
+**Major Release - Breaking Changes** 🚀
 
-- ✅ **Try<T> / TryAsync<T>** - Returns `Result<T, Exception>` for clean exception inspection
-- ✅ **TapError → MapError Pattern** - Separate logging from transformation
-- ✅ **Sync Actions in Async Pipelines** - Natural composition without `Task.FromResult`
-- ✅ **Exception Pattern Matching** - Handle specific exception types elegantly
-- 🎯 **Better Exception Logging** - Full context (stack traces, types) before transformation
+- 🔥 **Do/DoAsync** - Execute different side effects for success/failure in one method (killer feature!)
+- ✅ **Cleaner API** - `Result.Try()` instead of `ResultExtensions.Try()`
+- ✅ **Better Organization** - Extension methods in `BindSharp.Extensions` namespace
+- ⚠️ **Breaking Changes** - See [MIGRATION_V2.md](MIGRATION_V2.md) for upgrade guide
 
-**Example:**
-```csharp
-// Clean exception logging with separation of concerns
-var result = await ResultExtensions.TryAsync(() => FetchDataAsync())
-    .TapErrorAsync(ex => _logger.LogError(ex, "Fetch failed"))  // Log with full context
-    .MapErrorAsync(ex => "Failed to fetch data");  // Then transform
-
-// Sync logging in async pipelines - no more Task.FromResult!
-await GetUserAsync(id)
-    .TapAsync(user => _logger.LogInfo($"User {user.Id} loaded"))  // ✨ Sync action!
-    .TapErrorAsync(error => _logger.LogError(error));  // ✨ Sync action!
-```
-
-See the [Exception-First Try](#exception-first-try---clean-exception-handling) section below!
+**Migration is simple:**
+1. Add `using BindSharp.Extensions;` to files using extension methods
+2. Replace `ResultExtensions.Try` → `Result.Try`
+3. (Optional) Refactor `Tap + TapError` pairs to `Do` for cleaner code
 
 **Previous Releases:**
+- **Version 1.6.0** added [Exception-First Try](#exception-first-try---clean-exception-handling) & Mixed Async/Sync Pipelines
 - **Version 1.5.0** added [TapError - Error-Specific Side Effects](#taperror---error-specific-side-effects)
 - **Version 1.4.1** added [BindIf - Conditional Processing](#bindif---conditional-processing)
 - **Version 1.3.0** added [Equality Support & Implicit Conversions](#equality-support)
 - **Version 1.2.0** added the [Unit Type](#unit-type---representing-no-value)
-- **Version 1.1.0** added [ResultExtensions](#resultextensions---utilities-for-the-real-world)
+- **Version 1.1.0** added [Result Utilities](#result-utilities---utilities-for-the-real-world)
 
 ## Features
 
 ✅ **Result<T, TError>** - Explicit success/failure handling  
+🔥 **Do/DoAsync** - Dual side effects in one method (new in 2.0!)  
 ✅ **Exception-First Try** - Clean exception inspection and logging  
 ✅ **Mixed Async/Sync Pipelines** - Natural composition  
 ✅ **BindIf** - Conditional processing in pipelines  
@@ -97,8 +115,8 @@ var success = Result<int, string>.Success(42);
 var failure = Result<int, string>.Failure("Something went wrong");
 
 // Or use implicit conversions (new in 1.3.0!)
-Result<int, string> success2 = 42;  // ✨ Implicit!
-Result<int, string> failure2 = "Error occurred";  // ✨ Implicit!
+Result<int, string> success2 = 42;
+Result<int, string> failure2 = "Error occurred";
 
 // Check the result
 if (success.IsSuccess)
@@ -116,6 +134,8 @@ if (success == success2)  // ✅ TRUE!
 
 **New in 1.3.0!** Results now implement `IEquatable<Result<T, TError>>` for proper value equality:
 ```csharp
+using BindSharp;
+
 var r1 = Result<int, string>.Success(42);
 var r2 = Result<int, string>.Success(42);
 
@@ -156,6 +176,8 @@ public void Divide_ReturnsCorrectResult()
 
 ### Simple Example
 ```csharp
+using BindSharp;
+
 // Before: Verbose
 public Result<int, string> ParseAge(string input)
 {
@@ -171,14 +193,14 @@ public Result<int, string> ParseAge(string input)
     return Result<int, string>.Success(age);
 }
 
-// After: Clean! (53% less code)
+// After: Clean! (50% less code)
 public Result<int, string> ParseAge(string input)
 {
     if (string.IsNullOrWhiteSpace(input)) return "Age is required";
     if (!int.TryParse(input, out int age)) return "Must be a number";
     if (age < 0 || age > 150) return "Invalid age";
     
-    return age;  // ✨ So clean!
+    return age;
 }
 ```
 
@@ -198,6 +220,8 @@ public Result<decimal, string> GetDiscount(string code)
 
 ### Async Operations
 ```csharp
+using BindSharp;
+
 public async Task<Result<User, string>> GetUserAsync(int id)
 {
     if (id < 0) return "Invalid ID";  // ✨ Clean!
@@ -282,9 +306,11 @@ public int InsertRecord(Record r);              // Returning affected rows... bu
 
 ### The Solution
 ```csharp
+using BindSharp;
+
 // ✅ With Unit: consistent Result<Unit, TError> signatures everywhere
 public Task<Result<Unit, string>> DeleteUserAsync(int id) =>
-    ResultExtensions.TryAsync(
+    Result.TryAsync(
         operation: async () => {
             await _repository.DeleteAsync(id);
             return Unit.Value;  // T = Unit (success, no value)
@@ -295,6 +321,9 @@ public Task<Result<Unit, string>> DeleteUserAsync(int id) =>
 
 ### Real-World Example: CRUD Operations Chain
 ```csharp
+using BindSharp;
+using BindSharp.Extensions;
+
 // Every operation returns Result<Unit, string> for perfect composition
 public async Task<Result<Unit, string>> CreateUserWorkflowAsync(CreateUserRequest request)
 {
@@ -308,10 +337,10 @@ public async Task<Result<Unit, string>> CreateUserWorkflowAsync(CreateUserReques
 }
 
 private async Task<Result<Unit, string>> InsertUserAsync(CreateUserRequest request) =>
-    await ResultExtensions.TryAsync(
+    await Result.TryAsync(
         operation: async () => {
             await _database.ExecuteAsync("INSERT INTO Users ...", request);
-            return Unit.Value;  // ✨ Implicit conversion works here too!
+            return Unit.Value;  // Implicit conversion works here too!
         },
         errorFactory: ex => $"Database error: {ex.Message}"
     );
@@ -327,7 +356,7 @@ private async Task<Result<Unit, string>> InsertUserAsync(CreateUserRequest reque
 
 ### Performance
 
-`Unit.Value` is a singleton with zero memory footprint. There's no performance cost to using it - perfect for high-throughput functional pipelines!
+`Unit.Value` is a singleton with almost zero memory footprint. There's no performance cost to using it - perfect for high-throughput functional pipelines!
 
 ## Core Operations
 
@@ -335,7 +364,9 @@ private async Task<Result<Unit, string>> InsertUserAsync(CreateUserRequest reque
 
 Transform a value when the result is successful:
 ```csharp
-Result<int, string> GetAge() => 25;  // ✨ Implicit conversion!
+using BindSharp;
+
+Result<int, string> GetAge() => 25;
 
 var result = GetAge()
     .Map(age => age * 2)  // 50
@@ -363,17 +394,82 @@ public Result<UserDto, string> GetUser(int id)
 
 Chain multiple operations where each can fail:
 ```csharp
-Result<string, string> ValidateEmail(string email) =>
+using BindSharp;
+using BindSharp.Extensions;
+
+public abstract record EmailError(string Message, string? Details = null, Exception? Exception = null);
+
+public sealed record EmailValidationError(string? Details = null)
+    : EmailError("Invalid email", Details);
+    
+public sealed record SendEmailError(string? Details = null, Exception? Exception = null)
+    : EmailError("Failed to send email", Details, Exception);
+
+Result<string, EmailError> ValidateEmail(string email) =>
     email.Contains("@")
-        ? email  // ✨ Implicit Success!
-        : "Invalid email";  // ✨ Implicit Failure!
+        ? email
+        : new EmailValidationError("Email must contain '@' character");
 
-Result<string, string> SendEmail(string email) =>
-    /* send email logic */
-    $"Sent to {email}";  // ✨ Implicit Success!
+Result<string, EmailError> SendEmail(string email) =>
+    Result.Try(() =>
+    {
+        if (email.EndsWith("@blocked.com"))
+            throw new InvalidOperationException("Domain is blocked");
+        
+        if (string.IsNullOrWhiteSpace(email))
+            throw new ArgumentException("Email cannot be empty", nameof(email));
+        
+        // Simulate actual sending...
+        Console.WriteLine($"📧 Sending email to {email}...");
+        return $"Sent to {email}";
+    })
+    .TapError(ex => 
+    {
+        Console.WriteLine($"🔴 Email send error: {ex.GetType().Name} - {ex.Message}");
+        if (ex.StackTrace != null)
+            Console.WriteLine($"   Stack: {ex.StackTrace.Split('\n')[0]}");
+    })
+    .MapError(ex => ex switch
+    {
+        InvalidOperationException => new SendEmailError("Domain is blocked", ex),
+        ArgumentException => new SendEmailError("Invalid email format", ex),
+        _ => new SendEmailError("Unexpected error occurred", ex)
+    });
 
-var result = ValidateEmail("user@example.com")
-    .Bind(SendEmail);  // Only runs if validation succeeds
+// ✅ Success case
+var successResult = ValidateEmail("user@example.com")
+    .Bind(SendEmail);
+
+Console.WriteLine(successResult.Match(
+    success => $"✅ {success}",
+    error => $"❌ {error.Message}" + (!string.IsNullOrEmpty(error.Details) ? $": {error.Details}" : string.Empty)
+));
+// Output: 
+// 📧 Sending email to user@example.com...
+// ✅ Sent to user@example.com
+
+// ❌ Validation failure case
+var validationFailure = ValidateEmail("invalid-email")
+    .Bind(SendEmail);  // Never executes - validation failed
+
+Console.WriteLine(validationFailure.Match(
+    success => $"✅ {success}",
+    error => $"❌ {error.Message}" + (!string.IsNullOrEmpty(error.Details) ? $": {error.Details}" : string.Empty)
+));
+// Output: ❌ Invalid email: Email must contain '@' character
+
+// ❌ Send failure case - shows exception logging!
+var sendFailure = ValidateEmail("user@blocked.com")
+    .Bind(SendEmail);
+
+Console.WriteLine(sendFailure.Match(
+    success => $"✅ {success}",
+    error => $"❌ {error.Message}" + (error.Details != null ? $": {error.Details}" : "")
+));
+// Output:
+// 🔴 Email send error: InvalidOperationException - Domain is blocked
+//    Stack: at SendEmail(String email) in ...
+// ❌ Failed to send email: Domain is blocked
 ```
 
 **Real-world example - User registration flow:**
@@ -422,7 +518,9 @@ public IActionResult GetProduct(int id)
 
 Change the error type while preserving success:
 ```csharp
-Result<int, string> result = "404";  // ✨ Implicit Failure!
+using BindSharp;
+
+Result<int, string> result = "404";
 
 var transformed = result.MapError(errorCode => new 
 {
@@ -450,6 +548,8 @@ public Result<Order, LocalizedError> GetOrder(int id)
 
 **New in 1.4.1!** Execute operations conditionally based on a predicate:
 ```csharp
+using BindSharp;
+
 // Process data only if it needs processing
 var result = GetData()
     .BindIf(
@@ -466,6 +566,9 @@ var result = GetData()
 
 **Real-world example - Conditional enrichment:**
 ```csharp
+using BindSharp;
+using BindSharp.Extensions;
+
 public async Task<Result<User, string>> GetUserAsync(int id)
 {
     return await FetchUserAsync(id)
@@ -490,6 +593,9 @@ var result = GetPayload()
 
 **With async predicates (database checks):**
 ```csharp
+using BindSharp;
+using BindSharp.Extensions;
+
 public async Task<Result<Order, string>> ProcessOrderAsync(Order order)
 {
     return await Result<Order, string>.Success(order)
@@ -512,12 +618,15 @@ This is where BindSharp really shines! Handle async operations with the same ele
 
 Three overloads for every scenario:
 ```csharp
+using BindSharp;
+using BindSharp.Extensions;
+
 // 1. Task<Result> + sync function
 Task<Result<int, string>> asyncResult = GetUserIdAsync();
 var user = await asyncResult.MapAsync(id => GetUserFromCache(id));
 
 // 2. Result + async function
-Result<int, string> userId = 42;  // ✨ Implicit!
+Result<int, string> userId = 42;
 var user = await userId.MapAsync(async id => await FetchUserAsync(id));
 
 // 3. Task<Result> + async function (most common!)
@@ -527,6 +636,9 @@ var user = await asyncResult.MapAsync(async id => await FetchUserAsync(id));
 
 **Real-world example - API call chain:**
 ```csharp
+using BindSharp;
+using BindSharp.Extensions;
+
 public async Task<Result<OrderSummary, string>> GetOrderSummaryAsync(int orderId)
 {
     return await FetchOrderAsync(orderId)
@@ -540,6 +652,9 @@ public async Task<Result<OrderSummary, string>> GetOrderSummaryAsync(int orderId
 
 ### BindAsync - Chain Async Operations
 ```csharp
+using BindSharp;
+using BindSharp.Extensions;
+
 public async Task<Result<Receipt, string>> ProcessPaymentAsync(PaymentRequest request)
 {
     return await ValidatePaymentRequest(request)  // Result<PaymentRequest, string>
@@ -582,6 +697,9 @@ var output = await result.MatchAsync(
 
 **Real-world example - Complete async flow:**
 ```csharp
+using BindSharp;
+using BindSharp.Extensions;
+
 public async Task<IActionResult> CreateUserAsync(CreateUserRequest request)
 {
     var result = await ValidateUserRequest(request)
@@ -602,22 +720,24 @@ public async Task<IActionResult> CreateUserAsync(CreateUserRequest request)
 }
 ```
 
-## ResultExtensions - Utilities for the Real World
+## Result Utilities - Utilities for the Real World
 
-BindSharp 1.1.0 adds **ResultExtensions** - practical utilities that handle common real-world scenarios beyond pure functional operations.
+BindSharp provides **Result** static class with practical utilities that handle common real-world scenarios beyond pure functional operations.
 
 ### Try / TryAsync - Exception Handling
 
 Convert exception-based code into Results:
 ```csharp
+using BindSharp;
+
 // Synchronous - with custom error
-var result = ResultExtensions.Try(
+var result = Result.Try(
     () => int.Parse(userInput),
     ex => $"Invalid number: {ex.Message}"
 );
 
 // Asynchronous - with custom error
-var data = await ResultExtensions.TryAsync(
+var data = await Result.TryAsync(
     async () => await httpClient.GetStringAsync(url),
     ex => $"HTTP request failed: {ex.Message}"
 );
@@ -625,13 +745,16 @@ var data = await ResultExtensions.TryAsync(
 
 **Real-world example - API integration:**
 ```csharp
+using BindSharp;
+using BindSharp.Extensions;
+
 public async Task<Result<WeatherData, string>> GetWeatherAsync(string city)
 {
-    return await ResultExtensions.TryAsync(
+    return await Result.TryAsync(
             async () => await _weatherApi.GetWeatherAsync(city),
             ex => $"Failed to fetch weather for {city}: {ex.Message}"
         )
-        .BindAsync(json => ResultExtensions.Try(
+        .BindAsync(json => Result.Try(
             () => JsonSerializer.Deserialize<WeatherData>(json),
             ex => $"Invalid weather data format: {ex.Message}"
         ))
@@ -644,7 +767,7 @@ public async Task<Result<WeatherData, string>> GetWeatherAsync(string city)
 ```csharp
 public record ApiError(string Code, string Message, Exception? InnerException);
 
-var result = ResultExtensions.Try(
+var result = Result.Try(
     () => ProcessData(input),
     ex => new ApiError("PROCESS_FAILED", "Data processing failed", ex)
 );
@@ -656,21 +779,27 @@ var result = ResultExtensions.Try(
 **New in 1.6.0!** Returns `Result<T, Exception>` for clean exception inspection before transformation:
 
 ```csharp
+using BindSharp;
+using BindSharp.Extensions;
+
 // Exception-first - inspect then transform
-var result = ResultExtensions.Try(() => int.Parse("invalid"))
+var result = Result.Try(() => int.Parse("invalid"))
     .TapError(ex => _logger.LogError(ex, "Parse failed"))  // Log with full context
     .MapError(ex => "Invalid number");  // Then transform to custom error
 ```
 
 **The Pattern: TapError → MapError**
 ```csharp
+using BindSharp;
+using BindSharp.Extensions;
+
 // Clean separation: logging vs transformation
-var result = ResultExtensions.Try(() => File.ReadAllText("file.txt"))
+var result = Result.Try(() => File.ReadAllText("file.txt"))
     .TapError(ex => _logger.LogError(ex, "Read failed"))  // ✅ Logging (side effect)
     .MapError(ex => "Failed to read file");  // ✅ Transformation (error conversion)
 
 // Compare to mixing concerns (avoid this):
-var result = ResultExtensions.Try(
+var result = Result.Try(
     () => File.ReadAllText("file.txt"),
     ex => {
         _logger.LogError(ex, "Read failed");  // ❌ Mixed with transformation
@@ -681,9 +810,12 @@ var result = ResultExtensions.Try(
 
 **Real-world example - Pattern matching on exception types:**
 ```csharp
+using BindSharp;
+using BindSharp.Extensions;
+
 public async Task<Result<Data, string>> FetchDataAsync(string url)
 {
-    return await ResultExtensions.TryAsync(async () => 
+    return await Result.TryAsync(async () => 
             await _httpClient.GetStringAsync(url))
         .TapErrorAsync(ex => {
             // Pattern match and log with full exception context
@@ -713,7 +845,7 @@ public async Task<Result<Data, string>> FetchDataAsync(string url)
 ```csharp
 public async Task<Result<string, string>> ReadConfigFileAsync(string path)
 {
-    return await ResultExtensions.TryAsync(async () => 
+    return await Result.TryAsync(async () => 
             await File.ReadAllTextAsync(path))
         .TapErrorAsync(ex => {
             if (ex is FileNotFoundException fnf)
@@ -746,6 +878,9 @@ public async Task<Result<string, string>> ReadConfigFileAsync(string path)
 
 Add validation checks without breaking your pipeline:
 ```csharp
+using BindSharp;
+using BindSharp.Extensions;
+
 var result = GetUserAge()
     .Ensure(age => age >= 18, "Must be 18 or older")
     .Ensure(age => age <= 120, "Invalid age")
@@ -754,6 +889,9 @@ var result = GetUserAge()
 
 **Real-world example - Business rule validation:**
 ```csharp
+using BindSharp;
+using BindSharp.Extensions;
+
 public Result<Order, string> ValidateOrder(OrderRequest request)
 {
     return request.ToResult("Order request is required")
@@ -779,6 +917,9 @@ public async Task<Result<Account, string>> CreateAccountAsync(string email)
 
 Convert nullable checks into Results:
 ```csharp
+using BindSharp;
+using BindSharp.Extensions;
+
 Result<User?, string> maybeUser = FindUser(id);
 Result<User, string> user = maybeUser.EnsureNotNull("User not found");
 
@@ -793,6 +934,9 @@ var result = await GetUserFromCacheAsync(id)
 
 Convert nullable values to Results:
 ```csharp
+using BindSharp;
+using BindSharp.Extensions;
+
 string? cached = _cache.Get("key");
 var result = cached.ToResult("Value not found in cache");
 
@@ -805,11 +949,14 @@ var processed = _cache.Get("user:42")
 
 **Real-world example:**
 ```csharp
+using BindSharp;
+using BindSharp.Extensions;
+
 public Result<Product, string> GetProductFromSession(HttpContext context)
 {
     return context.Session.GetString("current_product")
         .ToResult("No product in session")
-        .Bind(json => ResultExtensions.Try(
+        .Bind(json => Result.Try(
             () => JsonSerializer.Deserialize<Product>(json),
             ex => "Invalid product data in session"
         ))
@@ -822,6 +969,9 @@ public Result<Product, string> GetProductFromSession(HttpContext context)
 
 Execute side effects (logging, metrics, notifications) without modifying the Result:
 ```csharp
+using BindSharp;
+using BindSharp.Extensions;
+
 var result = await ProcessOrderAsync(order)
     .TapAsync(async o => await _logger.LogInfoAsync($"Order {o.Id} processed"))
     .TapAsync(async o => await _metrics.IncrementAsync("orders.processed"))
@@ -844,6 +994,9 @@ await GetDataAsync()
 
 **Real-world example - Audit logging:**
 ```csharp
+using BindSharp;
+using BindSharp.Extensions;
+
 public async Task<Result<User, string>> UpdateUserAsync(int id, UpdateUserRequest request)
 {
     return await GetUserAsync(id)
@@ -860,6 +1013,9 @@ public async Task<Result<User, string>> UpdateUserAsync(int id, UpdateUserReques
 
 **New in 1.5.0!** Execute side effects specifically on errors without modifying the result:
 ```csharp
+using BindSharp;
+using BindSharp.Extensions;
+
 var result = await ProcessDataAsync()
     .TapAsync(data => _logger.LogInfoAsync($"Processing {data.Id}"))
     .TapErrorAsync(error => _logger.LogErrorAsync(error));  // Only on failure!
@@ -883,6 +1039,9 @@ await GetDataAsync()
 
 **Real-world example - Complete observability:**
 ```csharp
+using BindSharp;
+using BindSharp.Extensions;
+
 public async Task<Result<Order, string>> ProcessOrderAsync(Order order)
 {
     return await ValidateOrder(order)
@@ -912,10 +1071,215 @@ result
     .TapError(error => Console.WriteLine($"Error: {error}"));  // Only on failure
 ```
 
+### Do / DoAsync - Dual Side Effects
+
+**New in 2.0!** 🔥 Execute different side effects for success and failure in a single method call.
+
+Often you need to perform different actions based on whether an operation succeeds or fails - logging, metrics, notifications, etc. Previously, this required two separate method calls:
+
+```csharp
+// Old way (v1.x) - Still works but verbose
+var result = await ProcessDataAsync()
+    .TapAsync(data => _logger.LogInfo($"Processing succeeded: {data}"))
+    .TapErrorAsync(error => _logger.LogError($"Processing failed: {error}"));
+```
+
+**New way (v2.0) - Cleaner and more intentional:**
+```csharp
+using BindSharp;
+using BindSharp.Extensions;
+
+var result = await ProcessDataAsync()
+    .DoAsync(
+        data => _logger.LogInfo($"Processing succeeded: {data}"),
+        error => _logger.LogError($"Processing failed: {error}")
+    );
+```
+
+**Benefits:**
+- ✅ Single method call
+- ✅ Success and failure handling grouped together
+- ✅ Clear intent: "Do this on success, do that on failure"
+- ✅ Harder to forget one path
+- ✅ Cleaner, more maintainable code
+
+**How it works:**
+
+`Do/DoAsync` executes one of two actions based on the Result's state, then **returns the original Result unchanged** (just like `Tap`).
+
+```csharp
+var result = Result<int, string>.Success(42);
+
+// Both actions provided, only success executes
+var sameResult = result.Do(
+    onSuccess: value => Console.WriteLine($"Success: {value}"),  // ✅ Executes
+    onFailure: error => Console.WriteLine($"Error: {error}")     // ❌ Skipped
+);
+
+// sameResult == result (unchanged Success(42))
+```
+
+**Key Difference from Match:**
+
+| Method | Purpose | Returns |
+|--------|---------|---------|
+| **Match** | **Transform** the result into a new value | Different type (e.g., `string`, `IActionResult`) |
+| **Do** | **Execute side effects** only | Same `Result<T, TError>` |
+
+```csharp
+// Match - Transform result into a message
+string message = result.Match(
+    value => $"Got value: {value}",   // Returns string
+    error => $"Got error: {error}"    // Returns string
+);
+// Type: string ✅
+
+// Do - Execute side effects, keep result
+Result<int, string> sameResult = result.Do(
+    value => Console.WriteLine(value),  // Side effect only
+    error => Console.WriteLine(error)   // Side effect only
+);
+// Type: Result<int, string> ✅
+```
+
+**Async Combinations:**
+
+`DoAsync` supports **all combinations** of sync/async handlers:
+
+```csharp
+using BindSharp;
+using BindSharp.Extensions;
+
+// 1. Both sync
+result.Do(
+    value => Log(value),
+    error => Log(error)
+);
+
+// 2. Async success, sync failure
+await result.DoAsync(
+    async value => await LogToDbAsync(value),
+    error => Console.WriteLine(error)
+);
+
+// 3. Sync success, async failure
+await result.DoAsync(
+    value => Console.WriteLine(value),
+    async error => await AlertAdminAsync(error)
+);
+
+// 4. Both async
+await result.DoAsync(
+    async value => await LogSuccessAsync(value),
+    async error => await LogErrorAsync(error)
+);
+
+// Works with Task<Result> too!
+await GetDataAsync()
+    .DoAsync(
+        data => Console.WriteLine(data),
+        error => Console.WriteLine(error)
+    );
+```
+
+**Real-World Examples:**
+
+```csharp
+using BindSharp;
+using BindSharp.Extensions;
+
+// Example 1: Complete Observability
+public async Task<Result<Order, string>> ProcessOrderAsync(Order order)
+{
+    return await ValidateOrder(order)
+        .DoAsync(
+            o => _logger.LogInfo($"Validation passed for order {o.Id}"),
+            error => _logger.LogWarning($"Validation failed: {error}")
+        )
+        .BindAsync(async o => await SaveOrderAsync(o))
+        .DoAsync(
+            o => {
+                _logger.LogInfo($"Order {o.Id} saved");
+                _metrics.Increment("orders.success");
+            },
+            error => {
+                _logger.LogError($"Save failed: {error}");
+                _metrics.Increment("orders.failed");
+                _alerting.NotifyAdmin(error);
+            }
+        );
+}
+
+// Example 2: API Response with Logging
+public async Task<IActionResult> GetUserAsync(int id)
+{
+    var result = await _userService.FetchUserAsync(id)
+        .DoAsync(
+            async user => await _auditLog.LogAccessAsync(user.Id, "Viewed"),
+            async error => await _auditLog.LogAccessDeniedAsync(id, error)
+        );
+
+    return result.Match(
+        user => Ok(user),
+        error => NotFound(new { error })
+    );
+}
+
+// Example 3: Metrics and Alerting
+public async Task<Result<Data, string>> ImportDataAsync(string source)
+{
+    var stopwatch = Stopwatch.StartNew();
+
+    return await FetchDataAsync(source)
+        .DoAsync(
+            async data => {
+                stopwatch.Stop();
+                await _metrics.RecordLatencyAsync("import.success", stopwatch.Elapsed);
+                await _metrics.IncrementAsync("import.count");
+            },
+            async error => {
+                stopwatch.Stop();
+                await _metrics.RecordLatencyAsync("import.failure", stopwatch.Elapsed);
+                await _alerting.NotifyAsync($"Import failed from {source}: {error}");
+            }
+        )
+        .BindAsync(async data => await TransformDataAsync(data));
+}
+```
+
+**When to Use Do vs. Tap + TapError:**
+
+Both patterns are valid! Choose based on your preference:
+
+**Use `Do` when:**
+- ✅ Success and failure are related (same logging concern)
+- ✅ You want handlers visually grouped
+- ✅ Cleaner, more concise code matters
+
+**Use `Tap + TapError` when:**
+- ✅ Success and failure are unrelated concerns
+- ✅ Handlers are complex and better separated
+- ✅ You might add one handler later
+
+```csharp
+// Related logging - Do is clearer
+.DoAsync(
+    data => _logger.LogInfo($"Success: {data}"),
+    error => _logger.LogError($"Failed: {error}")
+)
+
+// Unrelated concerns - Tap + TapError is fine
+.TapAsync(data => _cache.SetAsync("key", data))  // Caching (success only)
+.TapErrorAsync(error => _retry.ScheduleAsync())  // Retry (failure only)
+```
+
 ### Using / UsingAsync - Resource Management
 
 Safe resource management with guaranteed disposal (the "bracket" pattern):
 ```csharp
+using BindSharp;
+using BindSharp.Extensions;
+
 var data = OpenFile("data.txt")
     .Using(stream => ReadAllData(stream));
 // stream is automatically disposed, even if ReadAllData fails
@@ -932,9 +1296,12 @@ var data = await OpenDatabaseConnectionAsync()
 
 **Real-world example - Database transaction:**
 ```csharp
+using BindSharp;
+using BindSharp.Extensions;
+
 public async Task<Result<Order, string>> CreateOrderWithTransactionAsync(CreateOrderRequest request)
 {
-    return await ResultExtensions.TryAsync(
+    return await Result.TryAsync(
             async () => await _dbContext.Database.BeginTransactionAsync(),
             ex => $"Failed to begin transaction: {ex.Message}"
         )
@@ -945,7 +1312,7 @@ public async Task<Result<Order, string>> CreateOrderWithTransactionAsync(CreateO
                 .TapAsync(async order => await CreateOrderHistoryAsync(order))
                 .BindAsync(async order => {
                     await transaction.CommitAsync();
-                    return order;  // ✨ Implicit Success!
+                    return order;
                 })
                 .MapErrorAsync(async error => {
                     await transaction.RollbackAsync();
@@ -960,6 +1327,9 @@ public async Task<Result<Order, string>> CreateOrderWithTransactionAsync(CreateO
 
 Convert synchronous Results to Task-wrapped Results:
 ```csharp
+using BindSharp;
+using BindSharp.Extensions;
+
 Result<int, string> syncResult = Validate(value);
 Task<Result<int, string>> asyncResult = syncResult.AsTask();
 
@@ -980,6 +1350,9 @@ public Task<Result<User, string>> GetUserAsync(int id)
 
 Here's how everything comes together with all the features:
 ```csharp
+using BindSharp;
+using BindSharp.Extensions;
+
 public class OrderService
 {
     public async Task<Result<OrderConfirmation, OrderError>> PlaceOrderAsync(Cart cart)
@@ -990,7 +1363,7 @@ public class OrderService
             .Ensure(c => c.CustomerId != null, OrderError.MissingCustomer())
             
             // Exception handling with logging (NEW in 1.6.0!)
-            .BindAsync(async c => await ResultExtensions.TryAsync(
+            .BindAsync(async c => await Result.TryAsync(
                 async () => await _inventory.CheckStockAsync(c.Items))
                 .TapErrorAsync(ex => {  // ✨ Log exception with full context
                     _logger.LogError(ex, "Inventory check failed");
@@ -999,10 +1372,13 @@ public class OrderService
                 .MapErrorAsync(ex => OrderError.InventoryError(ex.Message))
             )
             
-            // Business logic with sync logging (NEW in 1.6.0!)
-            .TapAsync(c => _logger.LogInfo($"Processing cart {c.Id}"))  // ✨ Sync!
+            // Business logic with dual side effects (NEW in 2.0!)
+            .DoAsync(
+                c => _logger.LogInfo($"Processing cart {c.Id}"),
+                error => _logger.LogError($"Validation failed: {error}")
+            )
             .BindAsync(async c => await CalculatePriceAsync(c))
-            .TapAsync(c => _metrics.Increment("orders.pricing.completed"))  // ✨ Sync!
+            .TapAsync(c => _metrics.Increment("orders.pricing.completed"))
             
             // Conditional processing
             .BindIfAsync(
@@ -1022,23 +1398,23 @@ public class OrderService
             .TapAsync(async order => await _emailService.SendConfirmationAsync(order))
             .TapAsync(async order => await _sms.SendNotificationAsync(order.CustomerId))
             
-            // Transform and audit
+            // Transform and dual side effects (NEW in 2.0!)
             .MapAsync(order => new OrderConfirmation(order))
-            .TapAsync(conf => _auditLog.LogOrderCreated(conf))  // ✨ Sync!
-            
-            // Error handling
-            .TapErrorAsync(error => {  // ✨ Sync!
-                _logger.LogError($"Order failed: {error}");
-                _metrics.Increment("orders.failed");
-                _alerting.NotifyAdmin($"Order processing failure: {error}");
-            });
+            .DoAsync(
+                conf => _auditLog.LogOrderCreated(conf),
+                error => {
+                    _logger.LogError($"Order failed: {error}");
+                    _metrics.Increment("orders.failed");
+                    _alerting.NotifyAdmin($"Order processing failure: {error}");
+                }
+            );
     }
     
     private async Task<Result<Order, OrderError>> ProcessPaymentWithTransactionAsync(Order order)
     {
-        return await ResultExtensions.TryAsync(
+        return await Result.TryAsync(
                 async () => await _paymentGateway.BeginTransactionAsync())
-            .TapErrorAsync(ex => _logger.LogError(ex, "Payment transaction failed"))  // ✨ NEW!
+            .TapErrorAsync(ex => _logger.LogError(ex, "Payment transaction failed"))
             .MapErrorAsync(ex => OrderError.PaymentError($"Transaction failed: {ex.Message}"))
             .UsingAsync(async transaction =>
                 await ChargeCustomerAsync(order)
@@ -1068,7 +1444,7 @@ public class OrderService
 9. **Mix styles freely** - Implicit and explicit can coexist
 10. **Use for guard clauses** - Perfect for early returns
 
-### ResultExtensions
+### Result Utilities (v2.0)
 11. **Use Try for exception-based APIs** - Convert legacy code to Results
 12. **Use Ensure for business rules** - Keep validation in the pipeline
 13. **Use Tap for side effects** - Logging, metrics, notifications
@@ -1087,19 +1463,27 @@ public class OrderService
 22. **Keep error actions simple** - Just logging, metrics, alerts
 23. **Don't transform in TapError** - Use MapError if you need to change the error
 
+### Do/DoAsync (NEW in 2.0)
+24. **Use Do for related concerns** - When success and failure handling are coupled
+25. **Keep handlers simple** - Do is for side effects, not complex logic
+26. **Use for cross-cutting concerns** - Logging, metrics, caching, notifications
+27. **Combine with other methods naturally** - Do fits seamlessly in pipelines
+
 ### Exception-First Try (NEW in 1.6.0)
-24. **Use exception-first Try for logging** - Log exceptions before transforming
-25. **Pattern match on exception types** - Handle different exceptions differently
-26. **Separate logging from transformation** - TapError then MapError
-27. **Use for metrics and alerting** - Inspect raw exceptions for monitoring
+28. **Use exception-first Try for logging** - Log exceptions before transforming
+29. **Pattern match on exception types** - Handle different exceptions differently
+30. **Separate logging from transformation** - TapError then MapError
+31. **Use for metrics and alerting** - Inspect raw exceptions for monitoring
 
 ### Mixed Async/Sync Pipelines (NEW in 1.6.0)
-28. **Use sync actions when possible** - Simpler than wrapping in Task.FromResult
-29. **Keep side effects lightweight** - Heavy operations should be async
-30. **Natural composition** - Let the compiler choose the right overload
+32. **Use sync actions when possible** - Simpler than wrapping in Task.FromResult
+33. **Keep side effects lightweight** - Heavy operations should be async
+34. **Natural composition** - Let the compiler choose the right overload
 
 ### Error Handling Strategy
 ```csharp
+using BindSharp;
+
 // ✅ Good: Specific error types
 public record OrderError(string Code, string Message);
 
@@ -1107,9 +1491,9 @@ public record OrderError(string Code, string Message);
 public Result<Order, OrderError> CreateOrder(OrderRequest request)
 {
     if (request.Items.Count == 0)
-        return new OrderError("EMPTY_CART", "Cart is empty");  // ✨ Implicit!
+        return new OrderError("EMPTY_CART", "Cart is empty");
     
-    return new Order(request);  // ✨ Implicit!
+    return new Order(request);
 }
 
 // ❌ Avoid: Same type for T and TError (ambiguous with implicit conversions!)
@@ -1118,13 +1502,16 @@ public Result<string, string> GetValue() { ... }  // DON'T DO THIS!
 
 ### Exception Handling Patterns (NEW in 1.6.0)
 ```csharp
+using BindSharp;
+using BindSharp.Extensions;
+
 // ✅ Good: Separate logging from transformation
-ResultExtensions.Try(() => operation())
+Result.Try(() => operation())
     .TapError(ex => _logger.LogError(ex, "Failed"))  // ✅ Logging
     .MapError(ex => "User-friendly message");  // ✅ Transformation
 
 // ❌ Avoid: Mixing concerns
-ResultExtensions.Try(
+Result.Try(
     () => operation(),
     ex => {
         _logger.LogError(ex, "Failed");  // ❌ Side effect mixed with transformation
@@ -1152,6 +1539,9 @@ try {
 
 With BindSharp:
 ```csharp
+using BindSharp;
+using BindSharp.Extensions;
+
 // 😊 The new way
 return await GetUserAsync(id)
     .BindAsync(user => GetOrdersAsync(user.Id))
@@ -1185,18 +1575,30 @@ return await GetUserAsync(id)
 - `MapErrorAsync<T, TError, TNewError>` - Async error transformation (3 overloads)
 - `MatchAsync<T, TError, TResult>` - Async result handling (7 overloads)
 
-### ResultExtensions (Utilities)
+### Result (Static Utilities)
 - `Try<T, TError>` - Exception handling with custom error factory
 - `Try<T>` - Exception-first (returns Result<T, Exception>) (new in 1.6.0!)
 - `TryAsync<T, TError>` - Async exception handling with custom error factory
 - `TryAsync<T>` - Async exception-first (new in 1.6.0!)
+
+### BindSharp.Extensions
+Require `using BindSharp.Extensions;`
+
+**Validation:**
 - `Ensure<T, TError>` / `EnsureAsync<T, TError>` - Validation
 - `EnsureNotNull<T, TError>` / `EnsureNotNullAsync<T, TError>` - Null safety
+
+**Conversion:**
 - `ToResult<T, TError>` - Convert nullable to Result
+- `AsTask<T, TError>` - Convert Result to Task
+
+**Side Effects:**
 - `Tap<T, TError>` / `TapAsync<T, TError>` - Success side effects (4 overloads, +1 in 1.6.0)
 - `TapError<T, TError>` / `TapErrorAsync<T, TError>` - Error side effects (4 overloads, +1 in 1.6.0)
+- `Do<T, TError>` / `DoAsync<T, TError>` - Dual side effects (8 overloads - new in 2.0!)
+
+**Resource Management:**
 - `Using<TResource, TResult, TError>` / `UsingAsync` - Resource management
-- `AsTask<T, TError>` - Convert Result to Task
 
 ## Acknowledgments
 

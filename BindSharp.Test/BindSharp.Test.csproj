@@ -23,4 +23,11 @@
       <ProjectReference Include="..\BindSharp\BindSharp.csproj" />
     </ItemGroup>
 
+    <ItemGroup>
+      <Folder Include="ExtensionsTests\Conversion\" />
+      <Folder Include="ExtensionsTests\ResourceManagement\" />
+      <Folder Include="ExtensionsTests\Validation\" />
+      <Folder Include="ResultUtilitiesTest\" />
+    </ItemGroup>
+
 </Project>

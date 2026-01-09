@@ -1,7 +1,9 @@
+using BindSharp.Extensions;
+
 namespace BindSharp.Test;
 
 /// <summary>
-/// Tests for ResultExtensions conversion methods (ToResult and AsTask)
+/// Tests for Result conversion methods (ToResult and AsTask)
 /// </summary>
 public class ResultExtensionsConversionTests
 {
@@ -128,7 +130,7 @@ public class ResultExtensionsConversionTests
         // Act
         var result = cachedValue
             .ToResult("Not found in cache")
-            .Bind(s => ResultExtensions.Try(
+            .Bind(s => Result.Try(
                 () => int.Parse(s),
                 ex => "Invalid number format"
             ))
@@ -148,7 +150,7 @@ public class ResultExtensionsConversionTests
         // Act
         var result = cachedValue
             .ToResult("Not found in cache")
-            .Bind(s => ResultExtensions.Try(
+            .Bind(s => Result.Try(
                 () => int.Parse(s),
                 ex => "Invalid number format"
             ))
@@ -403,7 +405,7 @@ public class ResultExtensionsConversionTests
         // Act
         var result = await cache.Get("user_id")
             .ToResult("User ID not in cache")
-            .Bind(s => ResultExtensions.Try(
+            .Bind(s => Result.Try(
                 () => int.Parse(s),
                 ex => $"Invalid user ID: {ex.Message}"
             ))

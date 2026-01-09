@@ -1,3 +1,5 @@
+using BindSharp.Extensions;
+
 namespace BindSharp.Test;
 
 /// <summary>

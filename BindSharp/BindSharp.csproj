@@ -8,10 +8,16 @@
 
         <!-- Package Information -->
         <PackageId>BindSharp</PackageId>
-        <Version>1.6.0</Version>
+        <Version>2.0.0</Version>
         <Authors>Gianfranco Díaz</Authors>
         <Company>Gianfranco Díaz</Company>
-        <Description>A lightweight functional programming library for .NET that provides Railway-Oriented Programming patterns with Result types. Includes comprehensive async support for composing operations that can succeed or fail.</Description>
+        <Description>
+            Lightweight functional programming library for .NET with Railway-Oriented Programming.
+
+            v2.0 adds Do/DoAsync for dual side effects and improves API organization.
+
+            ⚠️ BREAKING CHANGES - See migration guide: https://github.com/BindSharp/BindSharp/blob/main/ReleaseNotes/MIGRATION_V2.md
+        </Description>
         <PackageTags>csharp;dotnet;functional-programming;result;result-type;either;error-handling;railway-oriented-programming;async;validation;pipeline;monad;exception-handling;try-catch-alternative;unit;equality;implicit-conversion;conditional-branching;bindif;bind;map;tap;match;bindasync;mapasync;tapasync;matchasync</PackageTags>
         <PackageLicenseExpression>LGPL-3.0-or-later</PackageLicenseExpression>
 
@@ -27,14 +33,16 @@
         <PackageReadmeFile>README.md</PackageReadmeFile>
         <PackageIcon>icon.png</PackageIcon>
         <PackageReleaseNotes>
-            Version 1.6.0 adds exception-first Try overloads and mixed async/sync pipeline support:
-            - Added Try&lt;T&gt;/TryAsync&lt;T&gt; returning Result&lt;T, Exception&gt; for clean exception logging before transformation
-            - Added TapAsync/TapErrorAsync overloads accepting sync actions with async results
-            - Enables pattern matching on exception types with full exception context
-            - Simplifies async pipelines with sync side effects (no more Task.FromResult wrapping)
-            - Complete separation of logging (TapError) and transformation (MapError)
-            All changes are backwards compatible. No breaking changes.
-            See RELEASE_NOTES_1.6.0.md for full details.
+            ## v2.0.0 - Major Release
+
+            ### New Features
+            - Do/DoAsync - Execute different side effects for success/failure in one call
+
+            ### Breaking Changes
+            - Extension methods moved to BindSharp.Extensions namespace
+            - ResultExtensions renamed to Result
+
+            See MIGRATION_V2.md for upgrade guide.
         </PackageReleaseNotes>
     </PropertyGroup>
 
