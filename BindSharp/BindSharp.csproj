@@ -8,7 +8,7 @@
 
         <!-- Package Information -->
         <PackageId>BindSharp</PackageId>
-        <Version>2.0.0-rc.1</Version>
+        <Version>2.0.0</Version>
         <Authors>Gianfranco Díaz</Authors>
         <Company>Gianfranco Díaz</Company>
         <Description>
@@ -16,7 +16,7 @@
 
             v2.0 adds Do/DoAsync for dual side effects and improves API organization.
 
-            ⚠️ BREAKING CHANGES - See migration guide: https://github.com/YourRepo/BindSharp/blob/main/MIGRATION_V2.md
+            ⚠️ BREAKING CHANGES - See migration guide: https://github.com/BindSharp/BindSharp/blob/main/ReleaseNotes/MIGRATION_V2.md
         </Description>
         <PackageTags>csharp;dotnet;functional-programming;result;result-type;either;error-handling;railway-oriented-programming;async;validation;pipeline;monad;exception-handling;try-catch-alternative;unit;equality;implicit-conversion;conditional-branching;bindif;bind;map;tap;match;bindasync;mapasync;tapasync;matchasync</PackageTags>
         <PackageLicenseExpression>LGPL-3.0-or-later</PackageLicenseExpression>
