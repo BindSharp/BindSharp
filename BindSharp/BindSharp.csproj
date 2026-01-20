@@ -8,7 +8,7 @@
 
         <!-- Package Information -->
         <PackageId>BindSharp</PackageId>
-        <Version>2.0.0</Version>
+        <Version>2.1.0</Version>
         <Authors>Gianfranco Díaz</Authors>
         <Company>Gianfranco Díaz</Company>
         <Description>
@@ -19,7 +19,7 @@
             ⚠️ BREAKING CHANGES - See migration guide: https://github.com/BindSharp/BindSharp/blob/main/ReleaseNotes/MIGRATION_V2.md
         </Description>
         <PackageTags>csharp;dotnet;functional-programming;result;result-type;either;error-handling;railway-oriented-programming;async;validation;pipeline;monad;exception-handling;try-catch-alternative;unit;equality;implicit-conversion;conditional-branching;bindif;bind;map;tap;match;bindasync;mapasync;tapasync;matchasync</PackageTags>
-        <PackageLicenseExpression>LGPL-3.0-or-later</PackageLicenseExpression>
+        <PackageLicenseExpression>MPL-2.0</PackageLicenseExpression>
 
         <!-- Repository Information -->
         <RepositoryUrl>https://github.com/BindSharp/BindSharp/</RepositoryUrl>
@@ -33,16 +33,12 @@
         <PackageReadmeFile>README.md</PackageReadmeFile>
         <PackageIcon>icon.png</PackageIcon>
         <PackageReleaseNotes>
-            ## v2.0.0 - Major Release
+            ## v2.1.0
 
-            ### New Features
-            - Do/DoAsync - Execute different side effects for success/failure in one call
+            ### License Change
+            - Changed license from LGPL-3.0-or-later to MPL-2.0
 
-            ### Breaking Changes
-            - Extension methods moved to BindSharp.Extensions namespace
-            - ResultExtensions renamed to Result
-
-            See MIGRATION_V2.md for upgrade guide.
+            See MIGRATION_V2.md for v2.0.0 changes.
         </PackageReleaseNotes>
     </PropertyGroup>
 
