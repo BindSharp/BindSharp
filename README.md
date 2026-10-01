@@ -63,11 +63,14 @@ return await Result.TryAsync(() => FetchDataAsync())
 
 ---
 
-## What's New in 2.1.0
+## What's New in 2.1.1
 
-Version 2.1.0 is a **license update** — BindSharp is now published under [MPL-2.0](https://opensource.org/licenses/MPL-2.0). No API changes, no breaking changes. If you're already on 2.0, updating is a drop-in upgrade.
+Version 2.1.1 fixes a bug in **`Ensure` / `EnsureAsync`**: when the incoming result had already failed, `Ensure` replaced that failure with its own validation error, silently discarding the real cause. A failed result now passes through `Ensure` untouched — the original error is preserved and the predicate is not evaluated (the same way `Map`, `Bind` and `EnsureNotNull` already behaved).
+
+**Behavior change.** If a pipeline relied on `Ensure` overwriting an earlier failure, it will now surface the original error instead. The typical case is `.MapErrorAsync(...)` followed by `.EnsureAsync(...)`: a data-access failure used to come out as the validation error and now comes out as the mapped data-access error. Successful results are unaffected. See [RELEASE_NOTES_2.1.1](ReleaseNotes/RELEASE_NOTES_2.1.1.md).
 
 **Previous releases:**
+- **2.1.0** — License update to MPL-2.0
 - **2.0.0** — `Do`/`DoAsync` dual side effects, `BindSharp.Extensions` namespace
 - **1.6.0** — Exception-first `Try`, mixed async/sync pipelines
 - **1.5.0** — `TapError` / `TapErrorAsync`
@@ -431,7 +434,7 @@ public async Task<Result<Order, string>> ProcessOrderAsync(Order order)
 
 | | Predicate is `true` | Predicate is `false` |
 |---|---|---|
-| `Ensure` | success passes through | **returns Failure** |
+| `Ensure` | success passes through | **returns Failure** (an already-failed result is left as is) |
 | `BindIf` | **continuation executes** | success passes through unchanged |
 
 ---
@@ -540,7 +543,7 @@ return await result.MatchAsync(
 
 ## `Ensure` / `EnsureAsync`
 
-**What** — Validates a condition on a successful value. If the condition holds, the result passes through unchanged. If not, it becomes a `Failure` with the provided error.
+**What** — Validates a condition on a successful value. If the condition holds, the result passes through unchanged. If not, it becomes a `Failure` with the provided error. A result that is already a `Failure` passes through untouched — its original error is kept and the predicate is not evaluated.
 
 **Why** — Validation rules belong in the pipeline, not scattered across ad hoc `if` statements. `Ensure` keeps all business rules inline, composable, and easy to read.
 
