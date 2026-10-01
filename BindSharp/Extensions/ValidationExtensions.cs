@@ -15,7 +15,9 @@ public static class ValidationExtensions
 {
     /// <summary>
     /// Validates a condition on a successful result's value.
-    /// If the result is already failed or the condition is not met, returns a failure.
+    /// If the result is already failed, it is returned unchanged (the original error is preserved and the
+    /// predicate is not evaluated). If the result is successful but the condition is not met, returns a
+    /// failure with <paramref name="error"/>.
     /// </summary>
     /// <typeparam name="T">The type of the success value.</typeparam>
     /// <typeparam name="TError">The type of the error value.</typeparam>
@@ -23,7 +25,7 @@ public static class ValidationExtensions
     /// <param name="predicate">The validation condition to check.</param>
     /// <param name="error">The error to return if validation fails.</param>
     /// <returns>
-    /// The original result if successful and the predicate returns true,
+    /// The original result if it is a failure, or if it is successful and the predicate returns true;
     /// otherwise a failure result with the specified error.
     /// </returns>
     /// <example>
@@ -45,14 +47,19 @@ public static class ValidationExtensions
         Func<T, bool> predicate,
         TError error)
     {
-        return result.IsSuccess && predicate(result.Value)
+        if (result.IsFailure)
+            return result;
+
+        return predicate(result.Value)
             ? result
             : Result<T, TError>.Failure(error);
     }
 
     /// <summary>
     /// Asynchronously validates a condition on a successful result's value.
-    /// If the result is already failed or the condition is not met, returns a failure.
+    /// If the result is already failed, it is returned unchanged (the original error is preserved and the
+    /// predicate is not evaluated). If the result is successful but the condition is not met, returns a
+    /// failure with <paramref name="error"/>.
     /// </summary>
     /// <typeparam name="T">The type of the success value.</typeparam>
     /// <typeparam name="TError">The type of the error value.</typeparam>
@@ -60,8 +67,8 @@ public static class ValidationExtensions
     /// <param name="predicate">The validation condition to check.</param>
     /// <param name="error">The error to return if validation fails.</param>
     /// <returns>
-    /// A task containing the original result if successful and the predicate returns true,
-    /// otherwise a failure result with the specified error.
+    /// A task containing the original result if it is a failure, or if it is successful and the predicate
+    /// returns true; otherwise a failure result with the specified error.
     /// </returns>
     public static async Task<Result<T, TError>> EnsureAsync<T, TError>(
         this Task<Result<T, TError>> result,

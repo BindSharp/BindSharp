@@ -8,7 +8,7 @@
 
         <!-- Package Information -->
         <PackageId>BindSharp</PackageId>
-        <Version>2.1.0</Version>
+        <Version>2.1.1</Version>
         <Authors>Gianfranco Díaz</Authors>
         <Company>Gianfranco Díaz</Company>
         <Description>
@@ -33,9 +33,15 @@
         <PackageReadmeFile>README.md</PackageReadmeFile>
         <PackageIcon>icon.png</PackageIcon>
         <PackageReleaseNotes>
-            ## v2.1.0
+            ## v2.1.1
 
-            ### License Change
+            ### Fixed
+            - Ensure / EnsureAsync no longer replace an already-failed result with the validation error.
+              An upstream failure is now returned unchanged (original error preserved, predicate not evaluated).
+              Behavior change: pipelines that relied on Ensure overwriting an earlier failure will now surface
+              the original error. See ReleaseNotes/RELEASE_NOTES_2.1.1.md.
+
+            ## v2.1.0
             - Changed license from LGPL-3.0-or-later to MPL-2.0
 
             See MIGRATION_V2.md for v2.0.0 changes.
